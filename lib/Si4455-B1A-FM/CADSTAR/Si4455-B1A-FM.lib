@@ -1,0 +1,18 @@
+.Si4455-B1A-FM :1 ;Transceiver,RF,sub-GHz,OOK/(G)FSK,QFN20 Si4455-B1A-FM, RF Transceiver 283  350 MHz, 425  525 MHz, 850  960 MHz, GFSK, OOK, Triple Band
+QFN50P300X300X80-21N-D
+*STM IC
+*NGS
+*PLB 1="GND1" 2="SDN" 3="RXP" 4="RXN" 5="TX" 6="GND2" 7="VDD1" 8="VDD2" 9="GND3" 10="GPIO0" 11="GPIO1" 12="NIRQ" 13="SCLK" 14="SDO" 15="SDI" 16="NSEL" 17="XOUT" 18="XIN" 19="GPIO2" 20="GPIO3" 21="TP"
+*MXP 21
+*DFN Si4455-B1A-FM
+~!Manufacturer_Name (Silicon Labs)
+~!Manufacturer_Part_Number (Si4455-B1A-FM)
+~!RS Part Number (7698673)
+~!Link RS Price/Stock (http://uk.rs-online.com/web/p/products/7698673)
+~!Arrow Part Number (Si4455-B1A-FM)
+~!Link Arrow Price/Stock (https://www.arrow.com/en/products/si4455-b1a-fm/silicon-labs)
+~!Link Datasheet (http://docs-europe.electrocomponents.com/webdocs/14f6/0900766b814f6627.pdf)
+~!Height (0.8mm)
+~!3D_Model (Si4455-B1A-FM)
+Si4455-B1A-FM
+1.1!U 2.1!U 3.1!U 4.1!U 5.1!U 6.1!U 7.1!U 8.1!U 9.1!U 10.1!U 15.1!U 14.1!U 13.1!U 12.1!U 11.1!U 21.1!U 20.1!U 19.1!U 18.1!U 17.1!U 16.1!U 
