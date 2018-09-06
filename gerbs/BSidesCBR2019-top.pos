@@ -1,0 +1,10 @@
+### Module positions - created on Sun Sep  2 09:00:18 2018 ###
+### Printed by Pcbnew version kicad 4.0.7
+## Unit = mm, Angle = deg.
+## Side : top
+# Ref     Val       Package                      PosX       PosY       Rot  Side
+D1        BL        LED_0805_HandSoldering    68.1500  -102.4800    0.0000  top
+D2        BL        LED_0805_HandSoldering    50.0600  -102.5300  180.0000  top
+R2        LR        R_0805_HandSoldering      45.1500  -102.5300  180.0000  top
+R5        LR        R_0805_HandSoldering      72.9000  -102.4600  180.0000  top
+## End
