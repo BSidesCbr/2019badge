@@ -1,0 +1,32 @@
+hanging on the following handshake 
+send 0x44 -> get 0x7f
+send 0xff -> get 0x0
+eventually hitting system error
+
+0x00 - NOP
+0x01 - Part info
+0x02 - Power up
+0x09 - Test data?
+0x10 - ID func info
+0x11 - Set property
+0x12 - Get property
+0x13 - GPIO pin config
+0x14 - ADC reading
+0x15 - FIFO info
+0x19 - EZconfig check
+0x20 - get int status
+0x21 - get ph status
+0x22 - get modem status
+0x23 - get chip status
+0x31 - start TX
+0x32 - start RX
+0x33 - request device state
+0x34 - change state
+0x44 - read buffer
+0x50 - FRR(?) A read
+0x51 - FRR(?) B read
+0x53 - FRR(?) C read
+0x57 - FRR(?) D read
+0x66 - Write TX FIFO
+0x77 - Read RX FIFO
+
