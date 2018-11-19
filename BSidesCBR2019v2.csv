@@ -1,0 +1,13 @@
+Id,Designator,Package,Quantity,Designation,Supplier and ref
+4,"SW1,SW2,SW3,SW4",SPST SMD Pushbutton,4,"RESET, <<, O, >>",https://www.alibaba.com/product-detail/Tactile-Switch-SMT-SMD-Momentary-Push_60789288745.html
+5,U2,Nokia_5110-3310_LCD,1,Nokia_5110_LCD,https://www.alibaba.com/product-detail/5110-LCD-Screen-84-48-For_60775356085.html
+6,U1,ATMEGA328P-AU QFP,1,ATMEGA328P-AU,
+7,C1,100nF 0805 SMD Capacitor MLCC,1, 100n,
+8,R1,1MΩ 0805 SMD Resistor ¼W,1, 1M,
+9,"R2,R5,R3,R6",470Ω 0805 SMD Resistor ¼W,4,LR,
+10,R4,10KΩ 0805 SMD Resistor ¼W,1, 10K,
+11,Y1,4pin 3.2x2.5mm TXC 16Mhz Crystal,1,16Mhz,https://www.aliexpress.com/store/product/100pcs-3225-4p-3-2-2-5mm-16MHZ-16M-16-000MHZ-Passive-SMD-crystal/511081_1879543307.html
+12,BT1,CR2032 battery holder,1,Battery_Cell,"https://www.aliexpress.com/item/CR2016-2025-CR2032-Ultra-thin-copper-coin-battery-holder-SMD-Battery-Holders/1059305683.html?spm=2114.search0104.3.91.57a13cefwIW4bN&ws_ab_test=searchweb0_0,searchweb201602_4_10065_10068_10130_318_10547_319_317_10548_10696_10084_10083_10618_452_10307_532_10131_10132_10133_204_328_10059_10884_323_10887_100031_320_321_322_10103,searchweb201603_55,ppcSwitch_0&algo_expid=bb067ff5-3cee-47f0-bbe9-a0a623c856ee-13&algo_pvid=bb067ff5-3cee-47f0-bbe9-a0a623c856ee"
+13,"D2,D1,D3,D4",LED SMD 0603 Green,4,BL,
+14,SW2,PCM12 SPDT SMD Switch,1,SW_SPST,
+16,"R7,R8,R9",1KΩ 0805 SMD Resistor ¼W,3,1k,

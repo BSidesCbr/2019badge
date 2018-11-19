@@ -1,4 +1,4 @@
-update=Mon 04 Jun 2018 21:58:42 AEST
+update=Tue Oct 30 19:43:42 2018
 version=1
 last_client=kicad
 [pcbnew]
@@ -27,7 +27,7 @@ NetIExt=net
 version=1
 [eeschema]
 version=1
-LibDir=/home/ec0/Boards/kicad-lib
+LibDir=/home/user/Boards/kicad-libs2/components;/home/user/Boards/kicad-lib;/home/user/Boards/kicad-libs2/footprints
 [eeschema/libraries]
 LibName1=power
 LibName2=device
@@ -63,4 +63,4 @@ LibName31=contrib
 LibName32=valves
 LibName33=Si4455/Si4455-B1A-FM
 LibName34=ATMEGA328P/ATMEGA328P-AU
-LibName35=/home/ec0/Boards/kicad-libs2/components/Nokia_5110-3310_LCD/nokia_5110-3310_lcd
+LibName35=Nokia_5110-3310_LCD/nokia_5110-3310_lcd

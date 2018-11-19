@@ -1,0 +1,13 @@
+### Module positions - created on Sat Nov 10 08:42:52 2018 ###
+### Printed by Pcbnew version kicad 4.0.6
+## Unit = mm, Angle = deg.
+## Side : top
+# Ref     Val       Package                  PosX       PosY       Rot  Side
+D1        BL        LED_0603              40.5400   -84.3000   90.0000  top
+D2        BL        LED_0603              78.0300   -84.3700  270.0000  top
+D3        BL        LED_0603              77.9800   -97.3400   90.0000  top
+D4        BL        LED_0603              40.5300   -97.4600   90.0000  top
+SW3       <<        SW_SPST_B3SL-1002P    50.0888  -116.4844   90.0000  top
+SW4       OK        SW_SPST_B3SL-1002P    58.9468  -116.5558   90.0000  top
+SW5       >>        SW_SPST_B3SL-1002P    67.9384  -116.3526   90.0000  top
+## End
