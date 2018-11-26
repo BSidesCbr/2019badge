@@ -290,7 +290,7 @@ uint32_t rng_random(uint32_t min, uint32_t max) {
 //-----------------------------------------------------------------------------
 // Interrupt timers (virtual)
 //-----------------------------------------------------------------------------
-#define TMR_INTERRUPTS_MAX 4
+#define TMR_INTERRUPTS_MAX 8
 static uint8_t interrupts[VINTC_CALC_DATA_SIZE(TMR_INTERRUPTS_MAX)] = {0};
 uint32_t VINTC_API interrupt_get_tick_count(void *ctx) {
     ctx;
@@ -719,12 +719,12 @@ void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
       break;
   }
 }
-void snake_init(void *mem) {
+void snake_init(void *mem, uint32_t mem_size) {
     snkc_mem = (uint8_t*)mem;
     snake_direction = 0xff;
 
     // Snake game
-    if (!snkc_init(snkc_mem, SNAKE_GAME_MEM_SIZE))
+    if (!snkc_init(snkc_mem, mem_size))
     {
         LOG("snake init failed");
     }
@@ -856,11 +856,11 @@ void tetris_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
     }
   }
 }
-void tetris_init(void *mem) {
+void tetris_init(void *mem, uint32_t mem_size) {
     ttrs_mem = (uint8_t*)mem;
 
     // Tetris game
-    if (!ttrs_init(ttrs_mem, TETRIS_GAME_MEM_SIZE))
+    if (!ttrs_init(ttrs_mem, mem_size))
     {
         LOG("tetris init failed");
     }
@@ -992,7 +992,7 @@ void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
     }
   }
 }
-void viewer_init(void *mem) {
+void viewer_init(void *mem, uint32_t mem_size) {
     vwrc_mem = (uint8_t*)mem;
 
     // reset
@@ -1000,7 +1000,7 @@ void viewer_init(void *mem) {
     vwrc_c_str = NULL;
 
     // init
-    if (!vwrc_init(vwrc_mem, TEXT_VIEWER_MEM_SIZE)) {
+    if (!vwrc_init(vwrc_mem, mem_size)) {
         LOG("failed to init text viewer");
     }
 
@@ -1063,38 +1063,39 @@ void qr_code_draw(const char *text) {
 }
 
 //-----------------------------------------------------------------------------
-// Power and Signal
+// Dashboard Power and Signal
 //-----------------------------------------------------------------------------
-void screen_power_display(int level) {
+static uint8_t dash_power = 3;
+void dash_power_draw() {
   screen_fill_rect(SCREEN_WIDTH - 6, 0, 6, 38, SCREEN_COLOR_WHITE);
-  if (level >= 4) {
+  if (dash_power >= 4) {
     screen_fill_rect(SCREEN_WIDTH - 4, 0, 4, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 3) {
+  if (dash_power >= 3) {
     screen_fill_rect(SCREEN_WIDTH - 3, 8, 3, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 2) {
+  if (dash_power >= 2) {
     screen_fill_rect(SCREEN_WIDTH - 2, 16, 2, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 1) {
+  if (dash_power >= 1) {
     screen_fill_rect(SCREEN_WIDTH - 2, 24, 2, 6, SCREEN_COLOR_BLACK);
   }
   screen_fill_rect(SCREEN_WIDTH - 3, 31, 2, 2, SCREEN_COLOR_BLACK);
   screen_draw_rect(SCREEN_WIDTH - 4, 32, 4, 5, SCREEN_COLOR_BLACK);
 }
-
-void screen_signal_display(int level) {
+static uint8_t dash_signal = 4;
+void dash_signal_draw() {
   screen_fill_rect(0, 0, 6, 38, SCREEN_COLOR_WHITE);
-  if (level >= 4) {
+  if (dash_signal >= 4) {
     screen_fill_rect(0, 0, 4, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 3) {
+  if (dash_signal >= 3) {
     screen_fill_rect(0, 8, 3, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 2) {
+  if (dash_signal >= 2) {
     screen_fill_rect(0, 16, 2, 7, SCREEN_COLOR_BLACK);
   }
-  if (level >= 1) {
+  if (dash_signal >= 1) {
     screen_fill_rect(0, 24, 2, 6, SCREEN_COLOR_BLACK);
   }
   screen_draw_line(0, 31, 4, 31, SCREEN_COLOR_BLACK);
@@ -1103,24 +1104,186 @@ void screen_signal_display(int level) {
   screen_draw_pixel(3, 33, SCREEN_COLOR_BLACK);
   screen_draw_pixel(4, 32, SCREEN_COLOR_BLACK);
 }
-
+void VINTC_API dash_update(void *ctx) {
+  dash_power = rng_random(0, 4);
+  dash_signal = rng_random(0, 4);
+}
+void dash_init() {
+  // check button interrupt
+  if (!vintc_set_interrupt(interrupts, 1000, dash_update, NULL, NULL))
+  {
+      LOG("dashboard set interrupts failed");
+  }
+}
 //-----------------------------------------------------------------------------
 // Tiny Menu
 //-----------------------------------------------------------------------------
-#define MENU_MEM_SIZE (TMNU_CALC_DATA_SIZE())
+#define MENU_VIEW_WIDTH     56
+#define MENU_OFFSET_Y       9
+#define MENU_VIEW_HEIGHT    (SCREEN_HEIGHT - MENU_OFFSET_Y)
+#define MENU_OFFSET_X       ((SCREEN_WIDTH - MENU_VIEW_WIDTH) / 2)
+#define MENU_STR_OFFSET_X   2
+#define MENU_STR_OFFSET_Y   2
+#define MENU_MEM_SIZE       (TMNU_CALC_DATA_SIZE(84))
 static uint8_t *tmnu_mem = NULL;
+static char menu_title[10];
+void menu_set_title(void *title) {
+  memcpy_P(menu_title, title, sizeof(menu_title));
+  menu_title[sizeof(menu_title)-1] = '\0';
+}
+void VWRC_API menu_calc_string_view_api(void *ctx, const char *str, uint32_t *width, uint32_t *height) {
+    if (width) {
+        *width = (uint32_t)(4 * strlen(str)); // 4x6 font used
+        *width += (MENU_STR_OFFSET_X * 2); // padding on sides
+    }
+    if (height) {
+        *height = 6; // 4x6 font used
+        *height += ((MENU_STR_OFFSET_Y * 2) - 1); // padding top/bottom
+    }
+}
+void VWRC_API menu_draw_string_api(void *ctx, uint32_t x, uint32_t y, const char *str, TMNU_BOOL selected) {
+    uint32_t color = SCREEN_COLOR_BLACK;
+    uint32_t bg = SCREEN_COLOR_WHITE;
+    if (TMNU_TRUE == selected) {
+        color = SCREEN_COLOR_WHITE;
+        bg = SCREEN_COLOR_BLACK;
+        screen_fill_rect(MENU_OFFSET_X + x, MENU_OFFSET_Y + y, MENU_VIEW_WIDTH - 2, 6 + ((MENU_STR_OFFSET_Y * 2) - 1), bg);
+    }
+    screen_draw_string(MENU_OFFSET_X + x + MENU_STR_OFFSET_X, MENU_OFFSET_Y + y + MENU_STR_OFFSET_Y, str, color, bg);
+}
+void menu_draw() {
+    uint32_t item = 0;
+    uint32_t item_count = 0;
+    uint32_t items_per_view = 0;
+    uint32_t y = 0;
+    uint32_t h = 0;
+    uint32_t line_offset_x = 0;
+    uint32_t line_width = 0;
+    screen_draw_clear();
+    screen_draw_line(0, 5, SCREEN_WIDTH-1, 5, SCREEN_COLOR_BLACK);
+    menu_calc_string_view_api(NULL, menu_title, &line_width, &line_offset_x);
+    line_offset_x = (SCREEN_WIDTH - line_width) / 2;
+    screen_fill_rect(line_offset_x, 0, line_width, 9, SCREEN_COLOR_WHITE);
+    screen_draw_string(line_offset_x + MENU_STR_OFFSET_X, MENU_STR_OFFSET_Y, menu_title, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    dash_power_draw();
+    dash_signal_draw();
+    if (!tmnu_draw_view(tmnu_mem)) {
+        LOG("failed to draw menu");
+    }
+    if (!tmnu_get_item(tmnu_mem, &item)) {
+        LOG("failed to get item");
+    }
+    if (!tmnu_get_item_count(tmnu_mem, &item_count)) {
+        LOG("failed to get item count");
+    }
+    if (!tmnu_get_items_per_view(tmnu_mem, &items_per_view)) {
+        LOG("failed to get items per view");
+    }
+    if (items_per_view < item_count) {
+      // progress bars required
+      y = (MENU_VIEW_HEIGHT * item) / item_count;
+      h = (MENU_VIEW_HEIGHT * 1) / item_count;
+      screen_fill_rect(MENU_OFFSET_X + MENU_VIEW_WIDTH - 2, MENU_OFFSET_Y + y, 2, h, SCREEN_COLOR_BLACK);
+    }
+    screen_swap_fb();
+}
+void menu_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  if (BUTTON_DOWN == down) {
+    switch(key) {
+      case BUTTON_KEY_LEFT:
+        if (!tmnu_key_up(tmnu_mem)) {
+            LOG("menu scroll up failed");
+        }
+        menu_draw();
+        break;
+      case BUTTON_KEY_RIGHT:
+        if (!tmnu_key_down(tmnu_mem)) {
+            LOG("menu scroll down failed");
+        }
+        menu_draw();
+        break;
+      case BUTTON_KEY_OK:
+        if (!tmnu_key_enter(tmnu_mem)) {
+            LOG("menu select item failed");
+        }
+        break;
+      default:
+        break;
+    }
+  }
+}
+void VINTC_API menu_update(void *ctx) {
+  menu_draw();
+}
+void menu_init(void *mem, uint32_t mem_size) {
+    tmnu_mem = (uint8_t*)mem;
 
+    // init
+    if (!tmnu_init(tmnu_mem, mem_size)) {
+        LOG("failed to init menu");
+    }
+
+    // view size (2 pixels for scroll bar)
+    if (!tmnu_set_view(tmnu_mem, MENU_VIEW_WIDTH - 2, MENU_VIEW_HEIGHT)) {
+        LOG("failed to set view in text viewer");
+    }
+
+    // how to calculate the pixel size of a string
+    if (!tmnu_set_calc_string_view(tmnu_mem, menu_calc_string_view_api, NULL)) {
+        LOG("failed to set calc string view in text viewer");
+    }
+
+    // how to draw the text in the view
+    if (!tmnu_set_draw_string(tmnu_mem, menu_draw_string_api, NULL)) {
+        LOG("failed to set draw string in text viewer");
+    }
+
+    // check button interrupt
+    if (!vintc_set_interrupt(interrupts, 1000, menu_update, NULL, NULL))
+    {
+        LOG("menu set interrupts failed");
+    }
+
+    // Viewer buttons
+    button_callback(menu_button_press, NULL);
+}
+#define MAIN_MENU_COUNT 10
+void main_menu_items(void *ctx, uint32_t item, char *buffer, uint32_t size) {
+    memcpy_P(buffer, F("Menu Item "), sizeof("Menu Item "));
+    buffer[10] = '0' + item;
+    buffer[11] = '\0';
+}
+void main_menu_action(void *ctx, uint32_t item) {
+    
+}
+void menu_main() {
+    menu_set_title(F("MAIN"));
+    if (!tmnu_set_menu_item_string(tmnu_mem, MAIN_MENU_COUNT, main_menu_items, NULL)) {
+        LOG("failed to set main menu items");
+    }
+    if (!tmnu_set_on_select(tmnu_mem, main_menu_action, NULL)) {
+        LOG("failed to set main menu actions");
+    }
+}
 
 //-----------------------------------------------------------------------------
 // Game and application dynamic memory
 //-----------------------------------------------------------------------------
-#define GAME_APP_MEM_SIZE_0 0
-#define GAME_APP_MEM_SIZE_1 (SNAKE_GAME_MEM_SIZE > GAME_APP_MEM_SIZE_0 ? SNAKE_GAME_MEM_SIZE : GAME_APP_MEM_SIZE_0)
-#define GAME_APP_MEM_SIZE_2 (TETRIS_GAME_MEM_SIZE > GAME_APP_MEM_SIZE_1 ? TETRIS_GAME_MEM_SIZE : GAME_APP_MEM_SIZE_1)
-#define GAME_APP_MEM_SIZE_3 (MENU_MEM_SIZE > GAME_APP_MEM_SIZE_2 ? MENU_MEM_SIZE : GAME_APP_MEM_SIZE_2)
-#define GAME_APP_MEM_SIZE_4 (TEXT_VIEWER_MEM_SIZE > GAME_APP_MEM_SIZE_3 ? TEXT_VIEWER_MEM_SIZE : GAME_APP_MEM_SIZE_3)
-#define GAME_APP_MEM_SIZE GAME_APP_MEM_SIZE_4
-static uint8_t game_app_mem[GAME_APP_MEM_SIZE];
+#define APP_MEM_SIZE_0 0
+#define APP_MEM_SIZE_1 (SNAKE_GAME_MEM_SIZE > APP_MEM_SIZE_0 ? SNAKE_GAME_MEM_SIZE : APP_MEM_SIZE_0)
+#define APP_MEM_SIZE_2 (TETRIS_GAME_MEM_SIZE > APP_MEM_SIZE_1 ? TETRIS_GAME_MEM_SIZE : APP_MEM_SIZE_1)
+#define APP_MEM_SIZE_3 (MENU_MEM_SIZE > APP_MEM_SIZE_2 ? MENU_MEM_SIZE : APP_MEM_SIZE_2)
+#define APP_MEM_SIZE_4 (TEXT_VIEWER_MEM_SIZE > APP_MEM_SIZE_3 ? TEXT_VIEWER_MEM_SIZE : APP_MEM_SIZE_3)
+#define APP_MEM_SIZE APP_MEM_SIZE_4
+static uint8_t app_mem[APP_MEM_SIZE];
+const static uint32_t app_mem_size = APP_MEM_SIZE;
+
+//-----------------------------------------------------------------------------
+// State machine
+//-----------------------------------------------------------------------------
+#define STATE_BSIDES_LOGO   1
+#define STATE_NOPIA_LOGO    2
+#define STATE_MAIN_MENU     3
 
 //-----------------------------------------------------------------------------
 // Main
@@ -1132,6 +1295,7 @@ void setup() {
     button_init();
     nokia_init();
     screen_init();
+    dash_init();
 
     // IMAGE: BSIDESCBR
     //screen_draw_img(bsidescbr_logo);
@@ -1158,24 +1322,29 @@ void setup() {
     //screen_swap_fb();
 
     // IMAGE: SILVO JUGGLE
-    screen_draw_img(silvo_juggle);
-    screen_swap_fb();
+    //screen_draw_img(silvo_juggle);
+    //screen_swap_fb();
 
     // QR CODE GENERATOR
     //qr_code_draw("https://www.bsidesau.com.au/");
     //screen_swap_fb();
 
     // SNAKE
-    //snake_init(game_app_mem);
+    //snake_init(app_mem, app_mem_size);
 
     // TETRIS
-    //tetris_init(game_app_mem);
+    //tetris_init(app_mem, app_mem_size);
 
     // TEXT VIEWER
-    //viewer_init(game_app_mem);
+    //viewer_init(app_mem, app_mem_size);
     //viewer_c_str("Deep into that darkness peering, long I stood there, wondering, fearing, doubting\n\n - Edgar Allan Poe\n\nRead more at: https://www.brainyquote.com/quotes/edgar_allan_poe_393723");
     //viewer_draw();
     //screen_swap_fb();
+
+    // MENU
+    menu_init(app_mem, app_mem_size);
+    menu_main();
+    menu_draw();
 
     // DIALER
     //dialer_init();
@@ -1184,13 +1353,6 @@ void setup() {
 }
 
 void loop() {
-    // NOPIA SIGNAL / POWER
-    //screen_power_display(rng_random(0, 4));
-    //screen_signal_display(rng_random(0, 4));
-    //screen_swap_fb();
-    //delay(1000);
-
     // Virtual interrupt handling
     interrupts_tick();
 }
-
