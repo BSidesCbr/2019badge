@@ -795,7 +795,7 @@ TTRS_BOOL ttrs_key_drop(void *data) {
         return TTRS_TRUE;
     }
     // Check collision from up to down
-    while (TTRS_TRUE == ttrs_board_is_possible_movement(data, tetris->pos_x, tetris->pos_y, tetris->piece, tetris->rotation)) {
+    while (TTRS_TRUE == ttrs_board_is_possible_movement(data, tetris->pos_x, tetris->pos_y + 1, tetris->piece, tetris->rotation)) {
         tetris->pos_y++;
     }
     ttrs_board_store_piece(data, tetris->pos_x, tetris->pos_y, tetris->piece, tetris->rotation);

@@ -92,6 +92,8 @@ static int numCharCountBits(enum qrcodegen_Mode mode, int version);
 // value maps to the index in the string. For checking text and encoding segments.
 static const char *ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
 
+// removed for space
+/*
 // For generating error correction codes.
 testable const int8_t ECC_CODEWORDS_PER_BLOCK[4][41] = {
 	// Version: (note that index 0 is for padding, and is set to an illegal value)
@@ -101,9 +103,12 @@ testable const int8_t ECC_CODEWORDS_PER_BLOCK[4][41] = {
 	{-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30},  // Quartile
 	{-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30},  // High
 };
+*/
 
 #define qrcodegen_REED_SOLOMON_DEGREE_MAX 30  // Based on the table above
 
+// removed for space
+/*
 // For generating error correction codes.
 testable const int8_t NUM_ERROR_CORRECTION_BLOCKS[4][41] = {
 	// Version: (note that index 0 is for padding, and is set to an illegal value)
@@ -113,6 +118,7 @@ testable const int8_t NUM_ERROR_CORRECTION_BLOCKS[4][41] = {
 	{-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8,  8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
 	{-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81},  // High
 };
+*/
 
 // For automatic mask pattern selection.
 static const int PENALTY_N1 =  3;
@@ -120,13 +126,45 @@ static const int PENALTY_N2 =  3;
 static const int PENALTY_N3 = 40;
 static const int PENALTY_N4 = 10;
 
+static int8_t qrcodegen_ecc_cw_per_block(int ecl, int version) {
+	// removed for space
+	//return ECC_CODEWORDS_PER_BLOCK[ecl][version];
+	int8_t ECC_CODEWORDS_PER_BLOCK_SNIPPET[11] = {-1,  7, 10, 15, 20, 26, 18, 20, 24, 30, 18};
+	if (ecl != 0) {
+		return -1;
+	}
+	if (version >= 10) {
+		return -1;
+	}
+	return ECC_CODEWORDS_PER_BLOCK_SNIPPET[version];
+}
 
+static int8_t qrcodegen_error_correction_blocks(int ecl, int version) {
+	// removed for space
+	//return NUM_ERROR_CORRECTION_BLOCKS[ecl][version];
+	int8_t NUM_ERROR_CORRECTION_BLOCKS_SNIPPET[11] = {-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4};
+	if (ecl != 0) {
+		return -1;
+	}
+	if (version >= 10) {
+		return -1;
+	}
+	return NUM_ERROR_CORRECTION_BLOCKS_SNIPPET[version];
+}
 
 /*---- High-level QR Code encoding functions ----*/
 
 // Public function - see documentation comment in header file.
 bool qrcodegen_encodeText(const char *text, uint8_t tempBuffer[], uint8_t qrcode[],
 		enum qrcodegen_Ecc ecl, int minVersion, int maxVersion, enum qrcodegen_Mask mask, bool boostEcl) {
+	// removed for space
+	if (0 != (int)ecl) {
+		return false;
+	}
+	if (maxVersion >= 10) {
+		return false;
+	}
+	boostEcl = false;
 	
 	size_t textLen = strlen(text);
 	if (textLen == 0)
@@ -291,8 +329,8 @@ bool qrcodegen_encodeSegmentsAdvanced(const struct qrcodegen_Segment segs[], siz
 testable void addEccAndInterleave(uint8_t data[], int version, enum qrcodegen_Ecc ecl, uint8_t result[]) {
 	// Calculate parameter numbers
 	assert(0 <= (int)ecl && (int)ecl < 4 && qrcodegen_VERSION_MIN <= version && version <= qrcodegen_VERSION_MAX);
-	int numBlocks = NUM_ERROR_CORRECTION_BLOCKS[(int)ecl][version];
-	int blockEccLen = ECC_CODEWORDS_PER_BLOCK  [(int)ecl][version];
+	int numBlocks = qrcodegen_error_correction_blocks((int)ecl, version);
+	int blockEccLen = qrcodegen_ecc_cw_per_block((int)ecl, version);
 	int rawCodewords = getNumRawDataModules(version) / 8;
 	int dataLen = getNumDataCodewords(version, ecl);
 	int numShortBlocks = numBlocks - rawCodewords % numBlocks;
@@ -325,8 +363,8 @@ testable int getNumDataCodewords(int version, enum qrcodegen_Ecc ecl) {
 	int v = version, e = (int)ecl;
 	assert(0 <= e && e < 4);
 	return getNumRawDataModules(v) / 8
-		- ECC_CODEWORDS_PER_BLOCK    [e][v]
-		* NUM_ERROR_CORRECTION_BLOCKS[e][v];
+		- qrcodegen_ecc_cw_per_block(e, v)
+		* qrcodegen_error_correction_blocks(e, v);
 }
 
 

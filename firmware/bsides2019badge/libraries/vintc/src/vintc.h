@@ -30,6 +30,7 @@ typedef struct _VINTC_DATA {
 #define VINTC_CALC_DATA_SIZE(slots) (sizeof(VINTC_DATA) - sizeof(VINTC_ENTRY) + (slots * sizeof(VINTC_ENTRY)))
 
 typedef uint32_t VINTC_HANDLE;
+#define VINTC_INVALID_HANDLE ((VINTC_HANDLE)0xffff)
 
 #define VINTC_TRUE 1
 #define VINTC_FALSE 0
