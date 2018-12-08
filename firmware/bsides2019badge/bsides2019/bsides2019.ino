@@ -600,15 +600,28 @@ void main_menu();
 //-----------------------------------------------------------------------------
 // Dialer
 //-----------------------------------------------------------------------------
-static uint8_t dialer_x = 0;
-static uint8_t dialer_y = 0;
-static char dialer_number[13] = {0};
+typedef struct {
+    uint8_t dialer_x;
+    uint8_t dialer_y;
+    char dialer_number[13];
+} dialer_mem_t;
+#define DIALER_MEM_SIZE (sizeof(dialer_mem_t))
+dialer_mem_t *dialer = NULL;
 #define DIALER_BUTTON_OFFSET_X  18
 #define DIALER_BUTTON_OFFSET_Y  9
 #define DIALER_BUTTON_WIDTH     15
 #define DIALER_BUTTON_HEIGHT    9
+#define DIALER_KEY_BACK         0
+#define DIALER_KEY_ENTER        1
 char dialer_char(uint8_t x, uint8_t y) {
   char value = '0';
+  if (0 == x) {
+    return DIALER_KEY_BACK;
+  }
+  if (4 == x) {
+    return DIALER_KEY_ENTER;
+  }
+  x--;
   value = '1' + ((y * 3) + x);
   if (10 == (value - '0')) {
     value = '*';
@@ -624,58 +637,85 @@ char dialer_char(uint8_t x, uint8_t y) {
 void dialer_draw() {
   size_t btn_x = 0;
   size_t btn_y = 0;
-  size_t color = 0;
-  size_t bg = 0;
+  size_t current_y = 0;
+  bool color = SCREEN_COLOR_BLACK;
+  bool bg = SCREEN_COLOR_WHITE;
   char label[4] = {0};
   screen_draw_clear();
-  screen_draw_string(DIALER_BUTTON_OFFSET_X, 1, dialer_number, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-  for (uint8_t x = 0; x < 3; x++) {
+  screen_draw_string(DIALER_BUTTON_OFFSET_X, 1, dialer->dialer_number, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+  for (uint8_t x = 0; x < 5; x++) {
     for (uint8_t y = 0; y < 4; y++) {
-      btn_x = DIALER_BUTTON_OFFSET_X + (x * (DIALER_BUTTON_WIDTH+1));
-      btn_y = DIALER_BUTTON_OFFSET_Y + (y * (DIALER_BUTTON_HEIGHT+1));
-      if ((x == dialer_x) && (y == dialer_y)) {
-        screen_fill_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
-        color = SCREEN_COLOR_WHITE;
-        bg = SCREEN_COLOR_BLACK;
-      } else {
-        screen_draw_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
-        color = SCREEN_COLOR_BLACK;
-        bg = SCREEN_COLOR_WHITE;
-      }
-      label[0] = ' ';
-      label[1] = dialer_char(x, y);
-      label[2] = ' ';
-      label[3] = '\0';
-      screen_draw_pixel(btn_x, btn_y, SCREEN_COLOR_WHITE);
-      screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y, SCREEN_COLOR_WHITE);
-      screen_draw_pixel(btn_x, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
-      screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
-      screen_draw_string(btn_x + 2, btn_y + 2, label, color, bg);
+          if (0 == x) {
+              btn_x = 0;
+              btn_y = DIALER_BUTTON_OFFSET_Y;
+              label[0] = '<';
+              label[1] = '-';
+              label[2] = '-';
+          } else if (4 == x) {
+              btn_x = SCREEN_WIDTH - DIALER_BUTTON_WIDTH;
+              btn_y = DIALER_BUTTON_OFFSET_Y;
+              label[0] = 'E';
+              label[1] = 'N';
+              label[2] = 'T';
+          } else {
+              btn_x = DIALER_BUTTON_OFFSET_X + ((x - 1) * (DIALER_BUTTON_WIDTH+1));
+              btn_y = DIALER_BUTTON_OFFSET_Y + (y * (DIALER_BUTTON_HEIGHT+1));
+              label[0] = ' ';
+              label[1] = dialer_char(x, y);
+              label[2] = ' ';
+          }
+          if (((0 == x) && (0 == dialer->dialer_x)) || ((4 == x) && (4 == dialer->dialer_x)) || ((x == dialer->dialer_x) && (y == dialer->dialer_y))) {
+            screen_fill_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
+            color = SCREEN_COLOR_WHITE;
+            bg = SCREEN_COLOR_BLACK;
+          } else {
+            screen_draw_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
+            color = SCREEN_COLOR_BLACK;
+            bg = SCREEN_COLOR_WHITE;
+          }
+          label[3] = '\0';
+          screen_draw_pixel(btn_x, btn_y, SCREEN_COLOR_WHITE);
+          screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y, SCREEN_COLOR_WHITE);
+          screen_draw_pixel(btn_x, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
+          screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
+          screen_draw_string(btn_x + 2, btn_y + 2, label, color, bg);
     }
   }
 }
+void dialer_stop() {
+
+}
 void dialer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  char dialer_key = DIALER_KEY_BACK;
   if (BUTTON_DOWN == down) {
     switch(key) {
       case BUTTON_KEY_LEFT:
-        dialer_y++;
-        if (dialer_y >= 4) {
-          dialer_y = 0;
+        dialer->dialer_y++;
+        if (dialer->dialer_y >= 4) {
+          dialer->dialer_y = 0;
         }
         dialer_draw();
         screen_swap_fb();
         break;
       case BUTTON_KEY_RIGHT:
-        dialer_x++;
-        if (dialer_x >= 3) {
-          dialer_x = 0;
+        dialer->dialer_x++;
+        if (dialer->dialer_x >= 5) {
+          dialer->dialer_x = 0;
         }
         dialer_draw();
         screen_swap_fb();
         break;
       case BUTTON_KEY_OK:
-        if (strlen(dialer_number) < (sizeof(dialer_number) - 1)) {
-          dialer_number[strlen(dialer_number)] = dialer_char(dialer_x, dialer_y);
+        dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
+        if (DIALER_KEY_BACK == dialer_key) {
+            dialer_stop();
+            main_menu();
+            return;
+        } else if (DIALER_KEY_ENTER == dialer_key) {
+            // enter
+            memset(dialer->dialer_number, 0, sizeof(dialer->dialer_number));
+        } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
+            dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
         }
         dialer_draw();
         screen_swap_fb();
@@ -685,20 +725,16 @@ void dialer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
     }
   }
 }
-void dialer_init() {
-    dialer_x = 0;
-    dialer_y = 0;
-    memset(dialer_number, 0, sizeof(dialer_number));
+void dialer_init(void *mem, size_t mem_size) {
+    dialer = (dialer_mem_t*)mem;
 }
 void dialer_start() {
-    dialer_x = 0;
-    dialer_y = 0;
-    memset(dialer_number, 0, sizeof(dialer_number));
+    memset(dialer, 0, sizeof(dialer_mem_t));
     button_set_callback(dialer_button_press, NULL);
+    dialer_draw();
+    screen_swap_fb();
 }
-void dialer_stop() {
 
-}
 
 //-----------------------------------------------------------------------------
 // Snake
@@ -1557,6 +1593,8 @@ void main_menu_items(void *ctx, size_t item, char *buffer, size_t buffer_size) {
 void main_menu_action(void *ctx, size_t item) {
   switch(item) {
         case 0:
+            menu_stop();
+            dialer_start();
             break;
         case 1:
             menu_stop();
@@ -1593,7 +1631,8 @@ void main_menu() {
 #define APP_MEM_SIZE_3 (MENU_MEM_SIZE > APP_MEM_SIZE_2 ? MENU_MEM_SIZE : APP_MEM_SIZE_2)
 #define APP_MEM_SIZE_4 (TEXT_VIEWER_MEM_SIZE > APP_MEM_SIZE_3 ? TEXT_VIEWER_MEM_SIZE : APP_MEM_SIZE_3)
 #define APP_MEM_SIZE_5 (QR_MEM_SIZE > APP_MEM_SIZE_4 ? QR_MEM_SIZE : APP_MEM_SIZE_4)
-#define APP_MEM_SIZE    APP_MEM_SIZE_5
+#define APP_MEM_SIZE_6 (DIALER_MEM_SIZE > APP_MEM_SIZE_5 ? DIALER_MEM_SIZE : APP_MEM_SIZE_5)
+#define APP_MEM_SIZE    APP_MEM_SIZE_6
 static uint8_t app_mem[APP_MEM_SIZE];
 const static size_t app_mem_size = APP_MEM_SIZE;
 
@@ -1609,7 +1648,7 @@ void setup() {
     nokia_init();
     screen_init();
     dash_init();
-    dialer_init();
+    dialer_init(app_mem, app_mem_size);
     snake_init(app_mem, app_mem_size);
     tetris_init(app_mem, app_mem_size);
     qrcode_init(app_mem, app_mem_size);
