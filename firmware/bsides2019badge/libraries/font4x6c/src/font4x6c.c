@@ -103,7 +103,7 @@ const unsigned char f46c_font4x6 [96][2] PROGMEM = {
 };
 
 // Font retreival function - ugly, but needed.
-static unsigned char f46c_get_font_line(unsigned char data, int line_num) {
+static unsigned char f46c_get_font_line(unsigned char data, size_t line_num) {
     const uint8_t index = (data-32);
     unsigned char pixel = 0;
     if (pgm_read_byte(&f46c_font4x6[index][1]) & 1 == 1) line_num -= 1;
@@ -122,7 +122,7 @@ static unsigned char f46c_get_font_line(unsigned char data, int line_num) {
     return pixel & 0xE;
 }
 
-void f46c_draw_char(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg, F46cDrawPixelFn func, void *ctx)
+void f46c_draw_char(size_t x, size_t y, char c, uint32_t color, uint32_t bg, F46cDrawPixelFn func, void *ctx)
 {
     if (!func)
     {
@@ -131,10 +131,10 @@ void f46c_draw_char(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg,
     if ((c < 32) || (c > 127)) {
         c = 32;
     }
-    for (uint32_t dy = 0; dy < 6; dy++)
+    for (size_t dy = 0; dy < 6; dy++)
     {
-        unsigned char line = f46c_get_font_line((unsigned char)c, (int)dy);
-        for (uint32_t dx = 0; dx < 4; dx++)
+        unsigned char line = f46c_get_font_line((unsigned char)c, dy);
+        for (size_t dx = 0; dx < 4; dx++)
         {
             func(ctx, x + dx, y + dy, (1 << (3 - dx)) & line ? color : bg);
         }

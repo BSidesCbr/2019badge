@@ -1,6 +1,6 @@
 #include "viewerc.h"
 
-VWRC_BOOL vwrc_init(void *data, uint32_t size)
+VWRC_BOOL vwrc_init(void *data, size_t size)
 {
     if (size < sizeof(VWRC_VIEWER_DATA))
     {
@@ -11,12 +11,12 @@ VWRC_BOOL vwrc_init(void *data, uint32_t size)
     return VWRC_TRUE;
 }
 
-static int32_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, uint32_t offset, char *buffer, uint32_t buffer_size) {
+static ssize_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, size_t offset, char *buffer, size_t buffer_size) {
     char c = ' ';
-    uint32_t total_recd = 0;
-    uint32_t recd = 0;
-    uint32_t row_width = 0;
-    uint32_t unused = 0;
+    size_t total_recd = 0;
+    size_t recd = 0;
+    size_t row_width = 0;
+    size_t unused = 0;
 
     // make sure there is space for at-least 1 byte
     // and we need this byte for the nul-terminator
@@ -55,7 +55,7 @@ static int32_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, uint32_t offset, char *bu
 
         // yay! we read some data
         buffer[total_recd] = c;
-        total_recd += (uint32_t)recd;
+        total_recd += (size_t)recd;
 
         // have we reached a new-line separator?
         if ('\n' == c) {
@@ -85,7 +85,7 @@ static int32_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, uint32_t offset, char *bu
 
     // empty line == we are done
     if (0 == total_recd) {
-        return (int32_t)total_recd;
+        return (ssize_t)total_recd;
     }
 
     // if we reached the new-line character
@@ -96,7 +96,7 @@ static int32_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, uint32_t offset, char *bu
 
         // don't adjust the count, we have consumed this character!
         // we used it to goto a new line
-        return (int32_t)total_recd;
+        return (ssize_t)total_recd;
     }
 
     // if the last character is not a space, we need to word-wrap
@@ -124,14 +124,14 @@ static int32_t vwrc_read_row(VWRC_VIEWER_DATA *viewer, uint32_t offset, char *bu
     buffer[total_recd] = '\0';
 
     // return the total characters read for this line
-    return (int32_t)total_recd;
+    return (ssize_t)total_recd;
 }
 
 static void vwrc_recalculate(VWRC_VIEWER_DATA *viewer) {
-    uint32_t index = 0;
-    int32_t recd = 0;
-    uint32_t unused = 0;
-    uint32_t line_height = 0;
+    size_t index = 0;
+    ssize_t recd = 0;
+    size_t unused = 0;
+    size_t line_height = 0;
 
     // use 'j' as it is usually the 'longer' one in vertical height
     char string_for_height[2] = {'j', '\0'};
@@ -194,7 +194,7 @@ static void vwrc_recalculate(VWRC_VIEWER_DATA *viewer) {
 
         // we have read (received) this number of characters for this row.
         // move our index in the text along
-        index += (uint32_t)recd;
+        index += (size_t)recd;
 
         // this row is part of a view in the viewer
         viewer->row_count += 1;
@@ -204,7 +204,7 @@ static void vwrc_recalculate(VWRC_VIEWER_DATA *viewer) {
     viewer->row = 0;
 }
 
-VWRC_BOOL vwrc_set_view(void *data, uint32_t width, uint32_t height)
+VWRC_BOOL vwrc_set_view(void *data, size_t width, size_t height)
 {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
@@ -239,7 +239,7 @@ VWRC_BOOL vwrc_set_draw_string(void *data, VwrcDrawStringFn func, void *ctx) {
     return VWRC_TRUE;
 }
 
-VWRC_BOOL vwrc_set_text(void *data, uint32_t total_chars, VwrcReadFn func, void *ctx) {
+VWRC_BOOL vwrc_set_text(void *data, size_t total_chars, VwrcReadFn func, void *ctx) {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
         return VWRC_FALSE;
@@ -251,7 +251,7 @@ VWRC_BOOL vwrc_set_text(void *data, uint32_t total_chars, VwrcReadFn func, void 
     return VWRC_TRUE;
 }
 
-VWRC_BOOL vwrc_get_row(void *data, uint32_t *row) {
+VWRC_BOOL vwrc_get_row(void *data, size_t *row) {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
         return VWRC_FALSE;
@@ -262,7 +262,7 @@ VWRC_BOOL vwrc_get_row(void *data, uint32_t *row) {
     return VWRC_TRUE;
 }
 
-VWRC_BOOL vwrc_get_row_count(void *data, uint32_t *rows) {
+VWRC_BOOL vwrc_get_row_count(void *data, size_t *rows) {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
         return VWRC_FALSE;
@@ -273,7 +273,7 @@ VWRC_BOOL vwrc_get_row_count(void *data, uint32_t *rows) {
     return VWRC_TRUE;
 }
 
-VWRC_BOOL vwrc_get_rows_per_view(void *data, uint32_t *rows) {
+VWRC_BOOL vwrc_get_rows_per_view(void *data, size_t *rows) {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
         return VWRC_FALSE;
@@ -295,7 +295,7 @@ VWRC_BOOL vwrc_scroll_up(void *data) {
     return VWRC_TRUE;
 }
 
-VWRC_BOOL vwrc_scroll_to_row(void *data, uint32_t row) {
+VWRC_BOOL vwrc_scroll_to_row(void *data, size_t row) {
     VWRC_VIEWER_DATA *viewer = (VWRC_VIEWER_DATA *)data;
     if (NULL == viewer) {
         return VWRC_FALSE;
@@ -324,13 +324,13 @@ VWRC_BOOL vwrc_scroll_down(void *data) {
 }
 
 VWRC_BOOL vwrc_draw_view(void *data) {
-    uint32_t current_row = 0;
-    uint32_t index = 0;
-    int32_t recd = 0;
-    uint32_t x = 0;
-    uint32_t y = 0;
-    uint32_t unused = 0;
-    uint32_t line_height = 0;
+    size_t current_row = 0;
+    size_t index = 0;
+    ssize_t recd = 0;
+    size_t x = 0;
+    size_t y = 0;
+    size_t unused = 0;
+    size_t line_height = 0;
 
     // use 'j' as it is usually the 'longer' one in vertical height
     char string_for_height[2] = {'j', '\0'};
@@ -368,7 +368,7 @@ VWRC_BOOL vwrc_draw_view(void *data) {
 
         // we have read (received) this number of characters for this row.
         // move our index in the text along
-        index += (uint32_t)recd;
+        index += (size_t)recd;
 
         // display the rows that are in the current view
         if ((current_row >= viewer->row) && (current_row < (viewer->row + viewer->rows_per_view))) {
@@ -386,7 +386,7 @@ VWRC_BOOL vwrc_draw_view(void *data) {
 
 VWRC_BOOL vwrc_fini(void *data)
 {
-    uint32_t size = sizeof(VWRC_VIEWER_DATA);
+    size_t size = sizeof(VWRC_VIEWER_DATA);
     if (NULL == data) {
         return VWRC_FALSE;
     }

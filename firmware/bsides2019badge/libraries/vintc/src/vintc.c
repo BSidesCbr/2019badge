@@ -1,6 +1,6 @@
 #include "vintc.h"
 
-VINTC_BOOL vintc_init(void *data, uint32_t size)
+VINTC_BOOL vintc_init(void *data, size_t size)
 {
     if (size < sizeof(VINTC_DATA))
     {
@@ -24,7 +24,7 @@ VINTC_BOOL vintc_set_get_tick_count(void *data, VIntCGetTickCountFn func, void *
 
 VINTC_BOOL vintc_set_interrupt(void *data, uint32_t period, VIntCTockFn func, void *ctx, VINTC_HANDLE *handle)
 {
-    uint32_t i = 0;
+    size_t i = 0;
     VINTC_ENTRY *entry = NULL;
     if (NULL == data) {
         return VINTC_FALSE;
@@ -50,11 +50,11 @@ VINTC_BOOL vintc_set_interrupt(void *data, uint32_t period, VIntCTockFn func, vo
 
 VINTC_BOOL vintc_remove(void *data, VINTC_HANDLE handle)
 {
-    uint32_t i = 0;
+    size_t i = 0;
     if (NULL == data) {
         return VINTC_FALSE;
     }
-    i = (uint32_t)handle;
+    i = (size_t)handle;
     if (i >= ((VINTC_DATA*)data)->table_count) {
         return VINTC_FALSE;
     }
@@ -64,7 +64,7 @@ VINTC_BOOL vintc_remove(void *data, VINTC_HANDLE handle)
 
 VINTC_BOOL vintc_run_loop(void *data)
 {
-    uint32_t i = 0;
+    size_t i = 0;
     uint32_t tick = 0;
     VINTC_ENTRY *entry = NULL;
     if (NULL == data) {
@@ -88,7 +88,7 @@ VINTC_BOOL vintc_run_loop(void *data)
 
 VINTC_BOOL vintc_fini(void *data)
 {
-    uint32_t size = sizeof(VINTC_DATA);
+    size_t size = sizeof(VINTC_DATA);
     if (NULL == data) {
         return VINTC_FALSE;
     }

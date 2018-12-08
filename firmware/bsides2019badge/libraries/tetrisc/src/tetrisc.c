@@ -302,8 +302,6 @@ const uint32_t TTRS_PIECE_BITS[TTRS_PIECE_KIND_COUNT * TTRS_ROTATION_COUNT] PROG
 
 static TTRS_BLOCK_TYPE ttrs_get_block_type(TTRS_PIECE_TYPE piece, uint8_t rotation, int16_t x, int16_t y)
 {
-    uint32_t index = 0;
-
     // there is only 1 column that has a "1" in the middle
     // the rest are "0"
     if (0 == x)
@@ -421,13 +419,13 @@ static int16_t ttrs_get_y_initial_position(TTRS_PIECE_TYPE piece, uint8_t rotati
 // Each bit in each byte represents a single block on the board
 #define TTRS_BOARD_WIDTH_GET(data)                  (((TTRS_DATA*)data)->w)
 #define TTRS_BOARD_HEIGHT_GET(data)                 (((TTRS_DATA*)data)->h)
-#define TTRS_BOARD_BLOCK_INDEX(data,x,y)            ((uint32_t)(((y * TTRS_BOARD_WIDTH_GET(data)) + x) >> 3))
+#define TTRS_BOARD_BLOCK_INDEX(data,x,y)            ((size_t)(((y * TTRS_BOARD_WIDTH_GET(data)) + x) >> 3))
 #define TTRS_BOARD_BLOCK_BIT(data,x,y)              (((y * TTRS_BOARD_WIDTH_GET(data)) + x) & 0x7)
 #define TTRS_BOARD_BLOCK_BYTE(data,x,y)             ((((TTRS_DATA*)data)->board)[TTRS_BOARD_BLOCK_INDEX(data,x,y)])
 #define TTRS_BOARD_BLOCK_SET_FREE(data,x,y)         (TTRS_BOARD_BLOCK_BYTE(data,x,y) &=~ (1 << TTRS_BOARD_BLOCK_BIT(data,x,y)))
 #define TTRS_BOARD_BLOCK_SET_FILLED(data,x,y)       (TTRS_BOARD_BLOCK_BYTE(data,x,y) |= (1 << TTRS_BOARD_BLOCK_BIT(data,x,y)))
 #define TTRS_BOARD_BLOCK_GET(data,x,y)              ((TTRS_BOARD_BLOCK_BYTE(data,x,y) >> TTRS_BOARD_BLOCK_BIT(data,x,y)) & 0x1)
-#define TTRS_BOARD_BLOCK_OUT_OF_BOUNDS(data,x,y)    (TTRS_BOARD_BLOCK_INDEX(data,x,y) >= ((uint32_t)((TTRS_DATA*)data)->board_size))
+#define TTRS_BOARD_BLOCK_OUT_OF_BOUNDS(data,x,y)    (TTRS_BOARD_BLOCK_INDEX(data,x,y) >= ((size_t)((TTRS_DATA*)data)->board_size))
 static void ttrs_board_set(void *data, int16_t x, int16_t y, uint8_t block) {
     if (TTRS_BOARD_BLOCK_OUT_OF_BOUNDS(data, x, y)) {
         return;
@@ -550,7 +548,7 @@ static TTRS_BOOL ttrs_board_is_possible_movement(void *data, int16_t x, int16_t 
     return TTRS_TRUE;
 }
 
-TTRS_BOOL ttrs_init(void *data, uint32_t size) {
+TTRS_BOOL ttrs_init(void *data, size_t size) {
     if (size < sizeof(TTRS_DATA))
     {
         return TTRS_FALSE;
@@ -562,12 +560,12 @@ TTRS_BOOL ttrs_init(void *data, uint32_t size) {
 }
 
 TTRS_BOOL ttrs_set_grid(void *data, int16_t width, int16_t height) {
-    uint32_t requried_board_size = 0;
+    size_t requried_board_size = 0;
     TTRS_DATA *tetris = (TTRS_DATA *)data;
     if (NULL == tetris) {
         return TTRS_FALSE;
     }
-    requried_board_size = ((((uint32_t)width) * ((uint32_t)height)) >> 3);
+    requried_board_size = ((((size_t)width) * ((size_t)height)) >> 3);
     if (requried_board_size > (((TTRS_DATA*)data)->board_size)) {
         return TTRS_FALSE;
     }
@@ -864,7 +862,7 @@ TTRS_BOOL ttrs_tick(void *data) {
 }
 
 TTRS_BOOL ttrs_fini(void *data) {
-    uint32_t size = sizeof(TTRS_DATA);
+    size_t size = sizeof(TTRS_DATA);
     if (NULL == data) {
         return TTRS_FALSE;
     }

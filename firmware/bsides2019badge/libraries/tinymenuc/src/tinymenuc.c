@@ -1,6 +1,6 @@
 #include "tinymenuc.h"
 
-TMNU_BOOL TMNU_API tmnu_init(void *data, uint32_t size)
+TMNU_BOOL TMNU_API tmnu_init(void *data, size_t size)
 {
     if (size < sizeof(TMNU_DATA))
     {
@@ -13,9 +13,9 @@ TMNU_BOOL TMNU_API tmnu_init(void *data, uint32_t size)
 
 
 static void tmnu_recalculate(TMNU_DATA *viewer) {
-    uint32_t index = 0;
-    uint32_t unused = 0;
-    uint32_t line_height = 0;
+    size_t index = 0;
+    size_t unused = 0;
+    size_t line_height = 0;
 
     // use 'j' as it is usually the 'longer' one in vertical height
     char string_for_height[2] = {'j', '\0'};
@@ -51,7 +51,7 @@ static void tmnu_recalculate(TMNU_DATA *viewer) {
     return;
 }
 
-TMNU_BOOL tmnu_set_view(void *data, uint32_t width, uint32_t height)
+TMNU_BOOL tmnu_set_view(void *data, size_t width, size_t height)
 {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
@@ -63,7 +63,7 @@ TMNU_BOOL tmnu_set_view(void *data, uint32_t width, uint32_t height)
     return TMNU_TRUE;
 }
 
-TMNU_BOOL tmnu_set_menu_item_string(void *data, uint32_t item_count, TmnuMenuItemStringFn func, void *ctx)
+TMNU_BOOL tmnu_set_menu_item_string(void *data, size_t item_count, TmnuMenuItemStringFn func, void *ctx)
 {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
@@ -110,7 +110,7 @@ TMNU_BOOL tmnu_set_on_select(void *data, TmnuMenuItemOnSelectFn func, void *ctx)
     return TMNU_TRUE;
 }
 
-TMNU_BOOL tmnu_get_item(void *data, uint32_t *item) {
+TMNU_BOOL tmnu_get_item(void *data, size_t *item) {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
         return TMNU_FALSE;
@@ -121,7 +121,7 @@ TMNU_BOOL tmnu_get_item(void *data, uint32_t *item) {
     return TMNU_TRUE;
 }
 
-TMNU_BOOL tmnu_set_item(void *data, uint32_t item)
+TMNU_BOOL tmnu_set_item(void *data, size_t item)
 {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
@@ -131,7 +131,7 @@ TMNU_BOOL tmnu_set_item(void *data, uint32_t item)
     return TMNU_TRUE;
 }
 
-TMNU_BOOL tmnu_get_item_count(void *data, uint32_t *item_count) {
+TMNU_BOOL tmnu_get_item_count(void *data, size_t *item_count) {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
         return TMNU_FALSE;
@@ -142,7 +142,7 @@ TMNU_BOOL tmnu_get_item_count(void *data, uint32_t *item_count) {
     return TMNU_TRUE;
 }
 
-TMNU_BOOL tmnu_get_items_per_view(void *data, uint32_t *item_count) {
+TMNU_BOOL tmnu_get_items_per_view(void *data, size_t *item_count) {
     TMNU_DATA *menu = (TMNU_DATA *)data;
     if (NULL == menu) {
         return TMNU_FALSE;
@@ -186,10 +186,10 @@ TMNU_BOOL tmnu_key_enter(void *data) {
     return TMNU_TRUE;
 }
 
-static void tmnu_read_menu_item_string(TMNU_DATA *menu, uint32_t item) {
-    uint32_t size = 0;
-    uint32_t unused = 0;
-    uint32_t line_width = 0;
+static void tmnu_read_menu_item_string(TMNU_DATA *menu, size_t item) {
+    size_t size = 0;
+    size_t unused = 0;
+    size_t line_width = 0;
 
     // zero the buffer
     memset(menu->buffer, 0, menu->buffer_size);
@@ -213,11 +213,11 @@ static void tmnu_read_menu_item_string(TMNU_DATA *menu, uint32_t item) {
 }
 
 TMNU_BOOL tmnu_draw_view(void *data) {
-    uint32_t item_index = 0;
-    uint32_t item_selected = 0;
-    uint32_t view_index = 0;
-    uint32_t unused = 0;
-    uint32_t line_height = 0;
+    size_t item_index = 0;
+    size_t item_selected = 0;
+    size_t view_index = 0;
+    size_t unused = 0;
+    size_t line_height = 0;
 
     // use 'j' as it is usually the 'longer' one in vertical height
     char string_for_height[2] = {'j', '\0'};
@@ -269,7 +269,7 @@ TMNU_BOOL tmnu_draw_view(void *data) {
 
 TMNU_BOOL TMNU_API tmnu_fini(void *data)
 {
-    uint32_t size = sizeof(TMNU_DATA);
+    size_t size = sizeof(TMNU_DATA);
     if (NULL == data) {
         return TMNU_FALSE;
     }

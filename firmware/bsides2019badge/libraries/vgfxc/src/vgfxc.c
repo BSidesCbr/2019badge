@@ -1,6 +1,6 @@
 #include "vgfxc.h"
 
-VGFX_BOOL VGFX_API vgzm_init(void *data, uint32_t size)
+VGFX_BOOL VGFX_API vgzm_init(void *data, size_t size)
 {
     if (size < sizeof(VGFX_ZOOM_DATA))
     {
@@ -11,7 +11,7 @@ VGFX_BOOL VGFX_API vgzm_init(void *data, uint32_t size)
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vgzm_set_zoom(void *data, uint32_t factor)
+VGFX_BOOL VGFX_API vgzm_set_zoom(void *data, size_t factor)
 {
     VGFX_ZOOM_DATA *zoom = (VGFX_ZOOM_DATA *)data;
     if (NULL == zoom) {
@@ -43,7 +43,7 @@ VGFX_BOOL VGFX_API vgzm_set_draw_pixel(void *data, VgfxDrawPixelFn func, void *c
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vgzm_draw_clear(void *data, uint32_t color)
+VGFX_BOOL VGFX_API vgzm_draw_clear(void *data, vgfx_color_t color)
 {
     VGFX_ZOOM_DATA *zoom = (VGFX_ZOOM_DATA *)data;
     if (NULL == zoom) {
@@ -56,11 +56,11 @@ VGFX_BOOL VGFX_API vgzm_draw_clear(void *data, uint32_t color)
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vgzm_draw_pixel(void *data, uint32_t x, uint32_t y, uint32_t color)
+VGFX_BOOL VGFX_API vgzm_draw_pixel(void *data, size_t x, size_t y, vgfx_color_t color)
 {
     VGFX_ZOOM_DATA *zoom = (VGFX_ZOOM_DATA *)data;
-    uint32_t dx = 0;
-    uint32_t dy = 0;
+    size_t dx = 0;
+    size_t dy = 0;
     if (NULL == zoom) {
         return VGFX_FALSE;
     }
@@ -81,7 +81,7 @@ VGFX_BOOL VGFX_API vgzm_draw_pixel(void *data, uint32_t x, uint32_t y, uint32_t 
 
 VGFX_BOOL VGFX_API vgzm_fini(void *data)
 {
-    uint32_t size = sizeof(VGFX_ZOOM_DATA);
+    size_t size = sizeof(VGFX_ZOOM_DATA);
     if (NULL == data) {
         return VGFX_FALSE;
     }
@@ -89,7 +89,7 @@ VGFX_BOOL VGFX_API vgzm_fini(void *data)
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_init(void *data, uint32_t size)
+VGFX_BOOL VGFX_API vg2d_init(void *data, size_t size)
 {
     if (size < sizeof(VGFX_CANVAS_2D_DATA))
     {
@@ -121,7 +121,7 @@ VGFX_BOOL VGFX_API vg2d_set_draw_pixel(void *data, VgfxDrawPixelFn func, void *c
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_set_draw_char(void *data, VgfxDrawCharFn func, void *ctx, uint32_t width, uint32_t height)
+VGFX_BOOL VGFX_API vg2d_set_draw_char(void *data, VgfxDrawCharFn func, void *ctx, size_t width, size_t height)
 {
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
     if (NULL == canvas) {
@@ -134,7 +134,7 @@ VGFX_BOOL VGFX_API vg2d_set_draw_char(void *data, VgfxDrawCharFn func, void *ctx
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_clear(void *data, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_clear(void *data, vgfx_color_t color)
 {
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
     if (NULL == canvas) {
@@ -147,7 +147,7 @@ VGFX_BOOL VGFX_API vg2d_draw_clear(void *data, uint32_t color)
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_pixel(void *data, uint32_t x, uint32_t y, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_pixel(void *data, size_t x, size_t y, vgfx_color_t color)
 {
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
     if (NULL == canvas) {
@@ -160,12 +160,12 @@ VGFX_BOOL VGFX_API vg2d_draw_pixel(void *data, uint32_t x, uint32_t y, uint32_t 
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_line(void *data, uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_line(void *data, size_t x0, size_t y0, size_t x1, size_t y1, vgfx_color_t color)
 {
     // http://rosettacode.org/wiki/Bitmap/Bresenham%27s_line_algorithm#C
-    int dx = VGFX_ABS((int32_t)x1 - (int32_t)x0), sx = (int32_t)x0 < x1 ? 1 : -1;
-    int dy = VGFX_ABS((int32_t)y1 - (int32_t)y0), sy = (int32_t)y0 < (int32_t)y1 ? 1 : -1;
-    int err = (dx > dy ? dx : -dy) / 2, e2;
+    ssize_t dx = VGFX_ABS((ssize_t)x1 - (ssize_t)x0), sx = (ssize_t)x0 < x1 ? 1 : -1;
+    ssize_t dy = VGFX_ABS((ssize_t)y1 - (ssize_t)y0), sy = (ssize_t)y0 < (ssize_t)y1 ? 1 : -1;
+    ssize_t err = (dx > dy ? dx : -dy) / 2, e2;
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
     if (NULL == canvas) {
         return VGFX_FALSE;
@@ -183,7 +183,7 @@ VGFX_BOOL VGFX_API vg2d_draw_line(void *data, uint32_t x0, uint32_t y0, uint32_t
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_fast_hline(void *data, uint32_t x0, uint32_t y0, uint32_t length, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_fast_hline(void *data, size_t x0, size_t y0, size_t length, vgfx_color_t color)
 {
     if (0 == length) {
         return VGFX_TRUE;
@@ -191,7 +191,7 @@ VGFX_BOOL VGFX_API vg2d_draw_fast_hline(void *data, uint32_t x0, uint32_t y0, ui
     return vg2d_draw_line(data, x0, y0, x0 + length - 1, y0, color);
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_fast_vline(void *data, uint32_t x0, uint32_t y0, uint32_t length, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_fast_vline(void *data, size_t x0, size_t y0, size_t length, vgfx_color_t color)
 {
     if (0 == length) {
         return VGFX_TRUE;
@@ -199,7 +199,7 @@ VGFX_BOOL VGFX_API vg2d_draw_fast_vline(void *data, uint32_t x0, uint32_t y0, ui
     return vg2d_draw_line(data, x0, y0, x0, y0 + length - 1, color);
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_rect(void *data, uint32_t x0, uint32_t y0, uint32_t w, uint32_t h, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_draw_rect(void *data, size_t x0, size_t y0, size_t w, size_t h, vgfx_color_t color)
 {
     VGFX_BOOL status = VGFX_TRUE;
     if (VGFX_TRUE == status) {
@@ -217,10 +217,10 @@ VGFX_BOOL VGFX_API vg2d_draw_rect(void *data, uint32_t x0, uint32_t y0, uint32_t
     return status;
 }
 
-VGFX_BOOL VGFX_API vg2d_fill_rect(void *data, uint32_t x0, uint32_t y0, uint32_t w, uint32_t h, uint32_t color)
+VGFX_BOOL VGFX_API vg2d_fill_rect(void *data, size_t x0, size_t y0, size_t w, size_t h, vgfx_color_t color)
 {
     VGFX_BOOL status = VGFX_TRUE;
-    uint32_t i = 0;
+    size_t i = 0;
     for (i = 0; i < h; i++)
     {
         status = vg2d_draw_fast_hline(data, x0, y0 + i, w, color);
@@ -231,7 +231,7 @@ VGFX_BOOL VGFX_API vg2d_fill_rect(void *data, uint32_t x0, uint32_t y0, uint32_t
     return status;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_char(void *data, uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg)
+VGFX_BOOL VGFX_API vg2d_draw_char(void *data, size_t x, size_t y, char c, vgfx_color_t color, vgfx_color_t bg)
 {
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
     if (NULL == canvas) {
@@ -244,10 +244,10 @@ VGFX_BOOL VGFX_API vg2d_draw_char(void *data, uint32_t x, uint32_t y, char c, ui
     return VGFX_TRUE;
 }
 
-VGFX_BOOL VGFX_API vg2d_draw_string(void *data, uint32_t x, uint32_t y, const char *s, uint32_t color, uint32_t bg)
+VGFX_BOOL VGFX_API vg2d_draw_string(void *data, size_t x, size_t y, const char *s, vgfx_color_t color, vgfx_color_t bg)
 {
     VGFX_CANVAS_2D_DATA *canvas = (VGFX_CANVAS_2D_DATA *)data;
-    uint32_t dx = 0;
+    size_t dx = 0;
     if (NULL == canvas) {
         return VGFX_FALSE;
     }
@@ -269,7 +269,7 @@ VGFX_BOOL VGFX_API vg2d_draw_string(void *data, uint32_t x, uint32_t y, const ch
 
 VGFX_BOOL VGFX_API vg2d_fini(void *data)
 {
-    uint32_t size = sizeof(VGFX_ZOOM_DATA);
+    size_t size = sizeof(VGFX_ZOOM_DATA);
     if (NULL == data) {
         return VGFX_FALSE;
     }

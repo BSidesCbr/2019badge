@@ -1,8 +1,8 @@
-#include <Nokia_LCD.h>
 #include <vintc.h>
 #include <vgfxc.h>
 #include <font4x6c.h>
 #include <vfsc.h>
+#include <csvc.h>
 #include <snakec.h>
 #include <tetrisc.h>
 #include <viewerc.h>
@@ -71,14 +71,127 @@ uint8_t VFSC_API vfs_read_byte(void *ctx, void *addr) {
   return pgm_read_byte(addr);
 }
 void vfs_init() {
-  if (0 != vfsc_init(vfs, sizeof(vfs), vfs_data, vfs_size, vfs_read_byte, NULL)) {
+  if (0 != vfsc_init(vfs, sizeof(vfs), vfs_data, (size_t)vfs_size, vfs_read_byte, NULL)) {
     LOG("failed to init vfs");
   }
 }
 #define open_hash(hash,...)     vfsc_open_hash(vfs,hash)
 #define open(pathname,...)      vfsc_open(vfs,pathname)
+#define lseek(fd,offset,whence) vfsc_lseek(vfs,fd,offset,whence)
 #define read(fd,buf,count)      vfsc_read(vfs,fd,buf,count)
 #define close(fd)               vfsc_close(vfs,fd)
+#define SEEK_SET                VFSC_SEEK_SET
+#define SEEK_CUR                VFSC_SEEK_CUR
+#define SEEK_END                VFSC_SEEK_END
+
+//-----------------------------------------------------------------------------
+// CSV file
+//-----------------------------------------------------------------------------
+ssize_t CSVC_API csv_read_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+  int fd = (int)ctx;
+  if (fd < 0) {
+    LOG("CSV read invalid file handle");
+    return -1;
+  }
+  if (offset != (size_t)lseek(fd, offset, SEEK_SET)) {
+    LOG("CSV seek into file failed");
+    return -1;
+  }
+  return read(fd, buffer, buffer_size);
+}
+size_t csv_row_count(int fd)
+{
+  size_t rows = 0;
+  size_t size = 0;
+  off_t offset = lseek(fd, 0, SEEK_END);
+  if (offset < 0) {
+    LOG("Failed to determine size of CSV file");
+    return 0;
+  }
+  size = (size_t)offset;
+  offset = lseek(fd, 0, SEEK_SET);
+  if (offset != 0) {
+    LOG("Failed to return to start of CSV file");
+    return 0;
+  }
+  if (!csvc_dimensions(size, csv_read_api, (void *)fd, &rows, NULL)) {
+    LOG("Failed to count rows and columns");
+    return 0;
+  }
+  return rows;
+}
+void csv_for_each_cell(int fd, CsvcCellFn cell_fn, void *cell_ctx, char *buffer, size_t buffer_size) {
+  size_t size = 0;
+  off_t offset = lseek(fd, 0, SEEK_END);
+  if (offset < 0) {
+    LOG("Failed to determine size of CSV file");
+    return;
+  }
+  size = (size_t)offset;
+  offset = lseek(fd, 0, SEEK_SET);
+  if (offset != 0) {
+    LOG("Failed to return to start of CSV file");
+    return;
+  }
+  if (!csvc_for_each_cell(size, csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
+    LOG("Failed to iterate over CSV cells");
+    return;
+  }
+}
+typedef struct {
+    size_t row;
+    size_t column;
+} cell_select_t;
+CSVC_BOOL CSVC_API csv_find_cell_api(void *ctx, size_t row, size_t column, const char *text) {
+    cell_select_t *cell = (cell_select_t*)ctx;
+    if ((cell->row == row) && (cell->column == column)) {
+      // stop, I found it
+      return CSVC_FALSE;
+    }
+    return CSVC_TRUE;
+}
+void csv_read(int fd, size_t row, size_t column, char *buffer, size_t buffer_size) {
+  size_t size = 0;
+  off_t offset = lseek(fd, 0, SEEK_END);
+  if (offset < 0) {
+    LOG("Failed to determine size of CSV file");
+    return;
+  }
+  size = (size_t)offset;
+  offset = lseek(fd, 0, SEEK_SET);
+  if (offset != 0) {
+    LOG("Failed to return to start of CSV file");
+    return;
+  }
+  buffer[0] = '\0';
+  if (!csvc_read_cell(size, csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
+    LOG("Failed to read a single CSV cell");
+  }
+}
+off_t csv_lseek(int fd, size_t row, size_t column) {
+  off_t offset = -1;
+  char unused = '\0';
+  csv_read(fd, row, column, &unused, sizeof(unused));
+  offset = lseek(fd, 0, SEEK_CUR);
+  if (offset < 1) {
+    return offset;
+  }
+  if (offset == lseek(fd, 0, SEEK_END)) {
+      return offset;
+  }
+  return lseek(fd, offset - sizeof(unused), SEEK_SET);
+}
+size_t csv_row_size(int fd, size_t row) {
+  off_t offset1 = csv_lseek(fd, row, 0);
+  off_t offset2 = csv_lseek(fd, row + 1, 0);
+  if (offset1 < 0) {
+    return 0;
+  }
+  if (offset2 < offset1) {
+    return 0;
+  }
+  return (size_t)(offset2 - offset1);
+}
 
 //-----------------------------------------------------------------------------
 // Random
@@ -88,18 +201,17 @@ void rng_init() {
     // got a better idea??
     randomSeed(analogRead(0));
 }
-uint32_t rng_random(uint32_t min, uint32_t max) {
-    return (uint32_t) random((long)min, (long)(max + 1));
+int16_t rng_random_s16(int16_t min, int16_t max) {
+    return (int16_t) random((long)min, (long)(max + 1));
 }
 
 //-----------------------------------------------------------------------------
 // Interrupt timers (virtual)
 //-----------------------------------------------------------------------------
 #define TMR_INTERRUPTS_MAX 8
-#define INT_INVALID_HANDLE ((uint32_t)VINTC_INVALID_HANDLE)
+#define INT_INVALID_HANDLE ((size_t)VINTC_INVALID_HANDLE)
 static uint8_t interrupts[VINTC_CALC_DATA_SIZE(TMR_INTERRUPTS_MAX)] = {0};
 uint32_t VINTC_API interrupts_get_tick_count_api(void *ctx) {
-    ctx;
     return (uint32_t)millis();
 }
 void interrupts_init() {
@@ -118,16 +230,16 @@ void interrupts_tick() {
         LOG("interrupts run loop failed");
     }
 }
-uint32_t interrupts_set(uint32_t period_ms, VIntCTockFn func, void *ctx) {
+size_t interrupts_set(uint32_t period_ms, VIntCTockFn func, void *ctx) {
     VINTC_HANDLE handle = VINTC_INVALID_HANDLE;
     if (!vintc_set_interrupt(interrupts, period_ms, func, ctx, &handle))
     {
         LOG("set interrupt failed");
         return INT_INVALID_HANDLE;
     }
-    return (uint32_t)handle;
+    return (size_t)handle;
 }
-void interrupts_remove(uint32_t handle) {
+void interrupts_remove(size_t handle) {
     if (!vintc_remove(interrupts, (VINTC_HANDLE)handle))
     {
         LOG("reomve interrupt failed");
@@ -222,7 +334,12 @@ void button_init() {
 //-----------------------------------------------------------------------------
 // NOKIA 5110 screen
 //-----------------------------------------------------------------------------
-Nokia_LCD nokia_5110(NOKIA_5110_CLK, NOKIA_5110_DIN, NOKIA_5110_DC, NOKIA_5110_CE, NOKIA_5110_RST);
+//Nokia_LCD nokia_5110(NOKIA_5110_CLK, NOKIA_5110_DIN, NOKIA_5110_DC, NOKIA_5110_CE, NOKIA_5110_RST);
+#define kClk_pin NOKIA_5110_CLK
+#define kDin_pin NOKIA_5110_DIN
+#define kDc_pin NOKIA_5110_DC
+#define kCe_pin NOKIA_5110_CE
+#define kRst_pin NOKIA_5110_RST
 #define NOKIA_SCREEN_WIDTH            84
 #define NOKIA_SCREEN_HEIGHT           48
 #define NOKIA_SCREEN_PIXELS           (NOKIA_SCREEN_WIDTH*NOKIA_SCREEN_HEIGHT)
@@ -253,27 +370,27 @@ void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
         nokia_screen_buffer[index] &=~ (1 << bit);
     }
 }
-void nokia_draw_img(void *data, uint32_t x = 0, uint32_t y = 0, uint32_t width = NOKIA_SCREEN_WIDTH, uint32_t height = NOKIA_SCREEN_HEIGHT) {
-     for (uint32_t dy = 0; dy < height; dy++) {
-        for (uint32_t dx = 0; dx < width; dx++) {
-          uint32_t index = (dy * width) + dx;
-          uint32_t index_byte = index / 8;
-          uint32_t index_bit = 7 - (index % 8);
+void nokia_draw_img(void *data, size_t x = 0, size_t y = 0, size_t width = NOKIA_SCREEN_WIDTH, size_t height = NOKIA_SCREEN_HEIGHT) {
+     for (size_t dy = 0; dy < height; dy++) {
+        for (size_t dx = 0; dx < width; dx++) {
+          size_t index = (dy * width) + dx;
+          size_t index_byte = index / 8;
+          size_t index_bit = 7 - (index % 8);
           uint8_t value = pgm_read_byte(&(((uint8_t*)data)[index_byte]));
           nokia_draw_pixel(x + dx, y + dy, ((value >> index_bit) & 0x1) != 0 ? true : false);
       }
     }
 }
-void nokia_draw_raw_hash(uint32_t hash, uint32_t x = 0, uint32_t y = 0, uint32_t width = NOKIA_SCREEN_WIDTH, uint32_t height = NOKIA_SCREEN_HEIGHT) {
+void nokia_draw_raw_hash(uint32_t hash, size_t x = 0, size_t y = 0, size_t width = NOKIA_SCREEN_WIDTH, size_t height = NOKIA_SCREEN_HEIGHT) {
     int fd = open_hash(hash);
     if (fd < 0) {
       LOG("Failed to open bitmap");
     }
     uint8_t value = 0;
-    for (uint32_t dy = 0; dy < height; dy++) {
-        for (uint32_t dx = 0; dx < width; dx++) {
-            uint32_t index = (dy * width) + dx;
-            uint32_t index_bit = 7 - (index % 8);
+    for (size_t dy = 0; dy < height; dy++) {
+        for (size_t dx = 0; dx < width; dx++) {
+            size_t index = (dy * width) + dx;
+            size_t index_bit = 7 - (index % 8);
             if (0 == (index % 8)) {
                 if (1 != read(fd, &value, sizeof(uint8_t))) {
                     LOG("Failed read byte from bitmap");
@@ -287,16 +404,58 @@ void nokia_draw_raw_hash(uint32_t hash, uint32_t x = 0, uint32_t y = 0, uint32_t
     close(fd);
 }
 #define nokia_draw_raw(path) nokia_draw_raw_hash(VFSC_HASH(path))
+void nokia_send(const unsigned char lcd_byte, const bool is_data) {
+    // tell the LCD that we are writing either to data or a command
+    digitalWrite(kDc_pin, is_data);
+
+    // send the byte
+    digitalWrite(kCe_pin, LOW);
+    shiftOut(kDin_pin, kClk_pin, MSBFIRST, lcd_byte);
+    digitalWrite(kCe_pin, HIGH);
+}
+void nokia_send_command(const unsigned char command) {
+    nokia_send(command, false);
+}
+void nokia_send_data(const unsigned char data) {
+    nokia_send(data, true);
+}
 void nokia_swap_fb() {
-    nokia_5110.setCursor(0, 0);
-    nokia_5110.draw(nokia_screen_buffer,
-            sizeof(nokia_screen_buffer) / sizeof(nokia_screen_buffer[0]),
-            false);
+    // set cursor
+    nokia_send_command(0x80 | 0);  // Column
+    nokia_send_command(0x40 | 0);  // Row
+
+    // send pixels
+    for (unsigned int i = 0; i < sizeof(nokia_screen_buffer); i++) {
+        nokia_send_data(nokia_screen_buffer[i]);
+    }
 }
 void nokia_init() {
     memset(nokia_screen_buffer, 0, NOKIA_SCREEN_BYTES);
-    nokia_5110.begin();
-    nokia_5110.setContrast(60);  // Good values are usualy between 40 and 60
+
+    // setup connection
+    pinMode(kClk_pin, OUTPUT);
+    pinMode(kDin_pin, OUTPUT);
+    pinMode(kDc_pin, OUTPUT);
+    pinMode(kCe_pin, OUTPUT);
+    pinMode(kRst_pin, OUTPUT);
+
+    // reset the LCD to a known state
+    digitalWrite(kRst_pin, LOW);
+    digitalWrite(kRst_pin, HIGH);
+
+    nokia_send_command(0x21);  // Tell LCD extended commands follow
+    nokia_send_command(0xB0);  // Set LCD Vop (Contrast)
+    nokia_send_command(0x04);  // Set Temp coefficent
+    nokia_send_command(0x14);  // LCD bias mode 1:48 (try 0x13)
+    // we must send 0x20 before modifying the display control mode
+    nokia_send_command(0x20);
+    nokia_send_command(0x0C);  // Set display control, normal mode.
+
+    // set contrast
+    nokia_send_command(0x21);             // Tell LCD that extended commands follow
+    nokia_send_command(0x80 | 60);        // Set LCD Vop (Contrast)
+    nokia_send_command(0x20);             // Set display mode
+    
     nokia_draw_black();
     nokia_swap_fb();
     delay(1000);
@@ -305,18 +464,20 @@ void nokia_init() {
 //-----------------------------------------------------------------------------
 // Screen
 //-----------------------------------------------------------------------------
-#define SCREEN_COLOR_WHITE     0
-#define SCREEN_COLOR_BLACK     1
-#define SCREEN_WIDTH    NOKIA_SCREEN_WIDTH
-#define SCREEN_HEIGHT   NOKIA_SCREEN_HEIGHT
+#define SCREEN_COLOR_WHITE  (false)
+#define SCREEN_COLOR_BLACK  (true)
+#define SCREEN_WIDTH        NOKIA_SCREEN_WIDTH
+#define SCREEN_HEIGHT       NOKIA_SCREEN_HEIGHT
+#define SCREEN_FONT_WIDTH   F46C_WIDTH
+#define SCREEN_FONT_HEIGHT  F46C_HEIGHT
 static VGFX_CANVAS_2D_DATA screen;
-void VGFX_API screen_draw_clear_api(void *ctx, uint32_t color) {
+void VGFX_API screen_draw_clear_api(void *ctx, vgfx_color_t color) {
     nokia_draw_clear();
 }
-void VGFX_API screen_draw_pixel_api(void *ctx, uint32_t x, uint32_t y, uint32_t color) {
+void VGFX_API screen_draw_pixel_api(void *ctx, size_t x, size_t y, vgfx_color_t color) {
     nokia_draw_pixel(x, y, color > 0 ? true : false);
 }
-void VGFX_API screen_draw_char_api(void *ctx, uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg) {
+void VGFX_API screen_draw_char_api(void *ctx, size_t x, size_t y, char c, vgfx_color_t color, vgfx_color_t bg) {
     f46c_draw_char(x, y, c, color, bg, screen_draw_pixel_api, NULL);
 }
 void screen_init() {
@@ -345,23 +506,23 @@ void screen_swap_fb() {
 void screen_draw_clear() {
     nokia_draw_clear();
 }
-void screen_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
-    vg2d_fill_rect(&screen, x, y, w, h, color);
+void screen_fill_rect(size_t x, size_t y, size_t w, size_t h, bool color) {
+    vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0);
 }
-void screen_draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
-    vg2d_draw_rect(&screen, x, y, w, h, color);
+void screen_draw_rect(size_t x, size_t y, size_t w, size_t h, bool color) {
+    vg2d_draw_rect(&screen, x, y, w, h, color ? 1 : 0);
 }
-void screen_draw_line(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t color) {
-    vg2d_draw_line(&screen, x0, y0, x1, y1, color);
+void screen_draw_line(size_t x0, size_t y0, size_t x1, size_t y1, bool color) {
+    vg2d_draw_line(&screen, x0, y0, x1, y1, color ? 1 : 0);
 }
-void screen_draw_pixel(uint32_t x, uint32_t y, uint32_t color) {
-    nokia_draw_pixel(x, y, color > 0 ? true : false);
+void screen_draw_pixel(size_t x, size_t y, bool color) {
+    nokia_draw_pixel(x, y, color ? 1 : 0);
 }
-void screen_draw_char(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg) {
-    vg2d_draw_char(&screen, x, y, c, color, bg);
+void screen_draw_char(size_t x, size_t y, char c, bool color, bool bg) {
+    vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0);
 }
-void screen_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t color, uint32_t bg) {
-    vg2d_draw_string(&screen, x, y, s, color, bg);
+void screen_draw_string(size_t x, size_t y, const char *s, bool color, bool bg) {
+    vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0);
 }
 
 //-----------------------------------------------------------------------------
@@ -407,17 +568,17 @@ void dash_signal_draw() {
   screen_draw_pixel(4, 32, SCREEN_COLOR_BLACK);
 }
 void VINTC_API dash_update(void *ctx) {
-    dash_power = rng_random(0, 4);
-    dash_signal = rng_random(0, 4);
+    dash_power = rng_random_s16(0, 4);
+    dash_signal = rng_random_s16(0, 4);
 }
 void dash_init() {
     (void)interrupts_set(1000, dash_update, NULL);
 }
 
 //-----------------------------------------------------------------------------
-// RETURN TO MENU
+// Unlocked bootloader message
 //-----------------------------------------------------------------------------
-void boot_unlocked_draw(void *mem, uint32_t mem_size) {
+void boot_unlocked_draw(void *mem, size_t mem_size) {
     // Your device is unlocked and can't be trusted
     memcpy_P(mem, F("Your device is"), sizeof("Your device is"));
     screen_draw_string(0, 0, mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
@@ -431,6 +592,7 @@ void boot_unlocked_draw(void *mem, uint32_t mem_size) {
 //-----------------------------------------------------------------------------
 // RETURN TO MENU
 //-----------------------------------------------------------------------------
+void schedule_menu_hash(uint32_t hash);
 void link_menu();
 void game_menu();
 void main_menu();
@@ -460,10 +622,10 @@ char dialer_char(uint8_t x, uint8_t y) {
   return value;
 }
 void dialer_draw() {
-  uint32_t btn_x = 0;
-  uint32_t btn_y = 0;
-  uint32_t color = 0;
-  uint32_t bg = 0;
+  size_t btn_x = 0;
+  size_t btn_y = 0;
+  size_t color = 0;
+  size_t bg = 0;
   char label[4] = {0};
   screen_draw_clear();
   screen_draw_string(DIALER_BUTTON_OFFSET_X, 1, dialer_number, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
@@ -547,8 +709,8 @@ void dialer_stop() {
 #define SNAKE_GRID_HEIGHT   ((SCREEN_HEIGHT - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
 #define SNAKE_GAME_MEM_SIZE (SNKC_CALC_DATA_SIZE(SNAKE_GRID_WIDTH,SNAKE_GRID_HEIGHT))
 static uint8_t *snkc_mem = NULL;
-static uint32_t snkc_mem_size = 0;
-static uint32_t snkc_int_handle = INT_INVALID_HANDLE;
+static size_t snkc_mem_size = 0;
+static size_t snkc_int_handle = INT_INVALID_HANDLE;
 static uint8_t snake_direction = 0xff;
 void SNKC_API snake_draw_clear_api(void *ctx) {
     screen_draw_clear();
@@ -564,7 +726,7 @@ void SNKC_API snake_draw_apple_api(void *ctx, int16_t x, int16_t y) {
     screen_draw_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
-    return (int16_t)rng_random((uint32_t)min, (uint32_t)max);
+    return rng_random_s16(min, max);
 }
 void snake_draw_end() {
     screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
@@ -582,7 +744,7 @@ void snake_stop() {
     memset(snkc_mem, 0, snkc_mem_size);
 }
 void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  int32_t new_direction = (int32_t)snake_direction;
+  int8_t new_direction = (int8_t)snake_direction;
   if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
     if (duration > 1000) {
         // return to menu
@@ -664,7 +826,7 @@ void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
       break;
   }
 }
-void snake_init(void *mem, uint32_t mem_size) {
+void snake_init(void *mem, size_t mem_size) {
     snkc_mem = (uint8_t*)mem;
     snkc_mem_size = mem_size;
 }
@@ -722,8 +884,8 @@ void snake_start() {
 #define TETRIS_NEXT_PIECE_SQUARE_SIZE 4
 #define TETRIS_GAME_MEM_SIZE (TTRS_CALC_DATA_SIZE(TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
 static uint8_t *ttrs_mem = NULL;
-static uint32_t ttrs_mem_size = 0;
-static uint32_t ttrs_int_handle = INT_INVALID_HANDLE;
+static size_t ttrs_mem_size = 0;
+static size_t ttrs_int_handle = INT_INVALID_HANDLE;
 void TTRS_API tetris_draw_clear(void *ctx) {
     if (!vg2d_draw_clear(&screen, SCREEN_COLOR_WHITE)) {
         LOG("tetris draw clear failed");
@@ -751,7 +913,7 @@ void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
     }
 }
 int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
-    return (int16_t)rng_random((uint32_t)min, (uint32_t)max);
+    return rng_random_s16(min, max);
 }
 void TTRS_API tetris_game_over(void *ctx) {
     if (!ttrs_reset(ttrs_mem))
@@ -816,7 +978,7 @@ void tetris_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
     }
   }
 }
-void tetris_init(void *mem, uint32_t mem_size) {
+void tetris_init(void *mem, size_t mem_size) {
     ttrs_mem = (uint8_t*)mem;
     ttrs_mem_size = mem_size;
 }
@@ -867,12 +1029,15 @@ void tetris_start() {
 //-----------------------------------------------------------------------------
 // Text viewer
 //-----------------------------------------------------------------------------
-#define TEXT_VIEWER_MEM_SIZE (VWRC_CALC_DATA_SIZE(84))
+#define TEXT_VIEWER_CHARS_PER_LINE    (SCREEN_WIDTH/SCREEN_FONT_WIDTH)
+#define TEXT_VIEWER_MEM_SIZE          (VWRC_CALC_DATA_SIZE(TEXT_VIEWER_CHARS_PER_LINE))
 static uint8_t *vwrc_mem = NULL;
-static uint32_t vwrc_data_size = 0;
+static size_t vwrc_mem_size = 0;
+static size_t vwrc_data_size = 0;
 static const char *vwrc_c_str = 0;
-int32_t VWRC_API viewer_read_c_str_api(void *ctx, uint32_t offset, char *buffer, uint32_t buffer_size) {
-    uint32_t read_size = 0;
+static off_t vwrc_csv_offset = 0;
+static ssize_t vwrc_csv_row_size = 0;
+ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
     if (buffer_size >= vwrc_data_size) {
         // can't read more than the amount of data we have
         buffer_size = vwrc_data_size;
@@ -890,25 +1055,62 @@ int32_t VWRC_API viewer_read_c_str_api(void *ctx, uint32_t offset, char *buffer,
         return 0;
     }
     memcpy(buffer, vwrc_c_str + offset, buffer_size);
-    return (int32_t)buffer_size;
+    return (ssize_t)buffer_size;
 }
-void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, uint32_t *width, uint32_t *height) {
+ssize_t VWRC_API viewer_read_csv_row(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+    int fd = (int)ctx;
+    if (buffer_size >= vwrc_csv_row_size) {
+        // can't read more than the amount of data we have
+        buffer_size = vwrc_data_size;
+    }
+    if (offset >= vwrc_csv_row_size) {
+        // read out of bounds
+        LOG("OUT OF BOUNDS");
+        return -1;
+    }
+    if ((offset + buffer_size) > vwrc_csv_row_size) {
+        // reading the last few bytes at the end
+        buffer_size = vwrc_csv_row_size - offset;
+    }
+    if (0 == buffer_size) {
+        // no data was requested
+        LOG("NO DATA");
+        return 0;
+    }
+    (void) lseek(fd, vwrc_csv_offset + offset, SEEK_SET);
+    for (size_t i = 0; i < buffer_size; i++) {
+        if (1 != read(fd, &(buffer[i]), 1)) {
+            return (ssize_t)i;
+        }
+        if (buffer[i] == ',') {
+            // makes the schedule look nicer
+            if (offset < 10) {
+                // put a '-' between the times
+                buffer[i] = '-';
+            } else {
+                buffer[i] = '\n';
+            }
+        }
+    }
+    return (ssize_t)buffer_size;
+}
+void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
     if (width) {
-        *width = (uint32_t)(4 * strlen(str)); // 4x6 font used
+        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str));
     }
     if (height) {
-        *height = 6; // 4x6 font used
+        *height = SCREEN_FONT_HEIGHT;
     }
 }
-void VWRC_API viewer_draw_string_api(void *ctx, uint32_t x, uint32_t y, const char *str) {
+void VWRC_API viewer_draw_string_api(void *ctx, size_t x, size_t y, const char *str) {
     screen_draw_string(x, y, str, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 void viewer_draw() {
-    uint32_t row = 0;
-    uint32_t row_count = 0;
-    uint32_t rows_per_view = 0;
-    uint32_t y = 0;
-    uint32_t h = 0;
+    size_t row = 0;
+    size_t row_count = 0;
+    size_t rows_per_view = 0;
+    size_t y = 0;
+    size_t h = 0;
     screen_draw_clear();
     if (!vwrc_draw_view(vwrc_mem)) {
         LOG("failed to draw text viewer");
@@ -929,7 +1131,9 @@ void viewer_draw() {
       screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
     }
 }
+typedef void (*ViewerFn)(void);
 void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  ViewerFn backfn = (ViewerFn)ctx;
   if (BUTTON_DOWN == down) {
     switch(key) {
       case BUTTON_KEY_LEFT:
@@ -938,6 +1142,9 @@ void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
         }
         viewer_draw();
         screen_swap_fb();
+        break;
+      case BUTTON_KEY_OK:
+        backfn();
         break;
       case BUTTON_KEY_RIGHT:
         if (!vwrc_scroll_down(vwrc_mem)) {
@@ -951,15 +1158,18 @@ void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
     }
   }
 }
-void viewer_init(void *mem, uint32_t mem_size) {
+void viewer_init(void *mem, size_t mem_size) {
     vwrc_mem = (uint8_t*)mem;
+    vwrc_mem_size = mem_size;
+}
+void viewer_start(void* backfn) {
 
     // reset
     vwrc_data_size = 0;
     vwrc_c_str = NULL;
 
     // init
-    if (!vwrc_init(vwrc_mem, mem_size)) {
+    if (!vwrc_init(vwrc_mem, vwrc_mem_size)) {
         LOG("failed to init text viewer");
     }
 
@@ -979,15 +1189,33 @@ void viewer_init(void *mem, uint32_t mem_size) {
     }
 
     // Viewer buttons
-    button_set_callback(viewer_button_press, NULL);
+    button_set_callback(viewer_button_press, backfn);
 }
-
-void viewer_c_str(const char *text) {
+void viewer_c_str(const char *text, void* backfn) {
+    viewer_start(backfn);
     vwrc_c_str = text;
-    vwrc_data_size = (uint32_t)strlen(text);
+    vwrc_data_size = (size_t)strlen(text);
     if (!vwrc_set_text(vwrc_mem, vwrc_data_size, viewer_read_c_str_api, NULL)) {
         LOG("failed to set data for text viewer");
     }
+    viewer_draw();
+    screen_swap_fb();
+}
+void viewer_csv_row(int fd, size_t row, void* backfn) {
+    viewer_start(backfn);
+    vwrc_csv_offset = csv_lseek(fd, row, 0);
+    if (vwrc_csv_offset < 0) {
+      LOG("Failed to seek to CSV row");
+    }
+    vwrc_csv_row_size = csv_row_size(fd, row);
+    if (0 == vwrc_csv_row_size) {
+      LOG("CSV row empty");
+    }
+    if (!vwrc_set_text(vwrc_mem, vwrc_csv_row_size, viewer_read_csv_row, (void*)fd)) {
+        LOG("failed to set CSV for text viewer");
+    }
+    viewer_draw();
+    screen_swap_fb();
 }
 
 //-----------------------------------------------------------------------------
@@ -999,22 +1227,18 @@ void viewer_c_str(const char *text) {
 #define QR_MEM_SIZE             (QR_MEM_QR_CODE_SIZE) // + QR_MEM_TEMP_SIZE)
 static uint8_t *qrcode_mem = NULL;
 static uint8_t *qrcode_temp_mem = NULL;
-void qrcode_init(void *mem, uint32_t mem_size) {
+void qrcode_init(void *mem, size_t mem_size) {
   if (mem_size < QR_MEM_SIZE) {
     return;
   }
   qrcode_mem = (uint8_t*)mem;
   qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
 }
-void qrcode_draw(void *text, void *label) {
-  LOG("Begin");
-  enum qrcodegen_Ecc errCorLvl = qrcodegen_Ecc_LOW;  // Error correction level
-  bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, errCorLvl,
-    qrcodegen_VERSION_MIN, qrcodegen_MAX_VERSION, qrcodegen_Mask_AUTO, true);
-  if (ok) {
-    LOG("OK");
-  } else {
-    LOG("QRERR");
+void qrcode_draw(void *text) {
+  bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, qrcodegen_Ecc_LOW,
+    qrcodegen_MAX_VERSION, qrcodegen_MAX_VERSION, qrcodegen_Mask_0, true);
+  if (!ok) {
+    LOG("Failed to render QR code");
     return;
   }
   int size = qrcodegen_getSize(qrcode_mem);
@@ -1026,11 +1250,6 @@ void qrcode_draw(void *text, void *label) {
       nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
     }
   }
-  // another dirty hack to save memory, use the qrcode mem
-  memcpy_P(qrcode_mem, label, 22);
-  qrcode_mem[21] = '\0';
-  screen_draw_string(0, SCREEN_HEIGHT - 6, qrcode_mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-  LOG("Done");
 }
 typedef void (*QRCodeFn)(void);
 void qrcode_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
@@ -1039,12 +1258,11 @@ void qrcode_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
         backfn();
     }
 }
-void qrcode_display(void *text, void *label, void* backfn) {
-    qrcode_draw(text, label);
+void qrcode_display(void *text, void* backfn) {
+    qrcode_draw(text);
     screen_swap_fb();
     button_set_callback(qrcode_button_press, (void*)backfn);
 }
-
 
 //-----------------------------------------------------------------------------
 // Tiny Menu
@@ -1057,26 +1275,26 @@ void qrcode_display(void *text, void *label, void* backfn) {
 #define MENU_STR_OFFSET_Y   2
 #define MENU_MEM_SIZE       (TMNU_CALC_DATA_SIZE(84))
 static uint8_t *tmnu_mem = NULL;
-static uint32_t tmnu_mem_size = 0;
-static uint32_t tmnu_int_handle = INT_INVALID_HANDLE;
+static size_t tmnu_mem_size = 0;
+static size_t tmnu_int_handle = INT_INVALID_HANDLE;
 static char menu_title[12];
 void menu_set_title(void *title) {
   memcpy_P(menu_title, title, sizeof(menu_title));
   menu_title[sizeof(menu_title)-1] = '\0';
 }
-void VWRC_API menu_calc_string_view_api(void *ctx, const char *str, uint32_t *width, uint32_t *height) {
+void VWRC_API menu_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
     if (width) {
-        *width = (uint32_t)(4 * strlen(str)); // 4x6 font used
+        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str)); // 4x6 font used
         *width += (MENU_STR_OFFSET_X * 2); // padding on sides
     }
     if (height) {
-        *height = 6; // 4x6 font used
+        *height = SCREEN_FONT_HEIGHT;
         *height += ((MENU_STR_OFFSET_Y * 2) - 1); // padding top/bottom
     }
 }
-void VWRC_API menu_draw_string_api(void *ctx, uint32_t x, uint32_t y, const char *str, TMNU_BOOL selected) {
-    uint32_t color = SCREEN_COLOR_BLACK;
-    uint32_t bg = SCREEN_COLOR_WHITE;
+void VWRC_API menu_draw_string_api(void *ctx, size_t x, size_t y, const char *str, TMNU_BOOL selected) {
+    bool color = SCREEN_COLOR_BLACK;
+    bool bg = SCREEN_COLOR_WHITE;
     if (TMNU_TRUE == selected) {
         color = SCREEN_COLOR_WHITE;
         bg = SCREEN_COLOR_BLACK;
@@ -1085,13 +1303,13 @@ void VWRC_API menu_draw_string_api(void *ctx, uint32_t x, uint32_t y, const char
     screen_draw_string(MENU_OFFSET_X + x + MENU_STR_OFFSET_X, MENU_OFFSET_Y + y + MENU_STR_OFFSET_Y, str, color, bg);
 }
 void menu_draw() {
-    uint32_t item = 0;
-    uint32_t item_count = 0;
-    uint32_t items_per_view = 0;
-    uint32_t y = 0;
-    uint32_t h = 0;
-    uint32_t line_offset_x = 0;
-    uint32_t line_width = 0;
+    size_t item = 0;
+    size_t item_count = 0;
+    size_t items_per_view = 0;
+    size_t y = 0;
+    size_t h = 0;
+    size_t line_offset_x = 0;
+    size_t line_width = 0;
     screen_draw_clear();
     screen_draw_line(0, 5, SCREEN_WIDTH-1, 5, SCREEN_COLOR_BLACK);
     menu_calc_string_view_api(NULL, menu_title, &line_width, &line_offset_x);
@@ -1148,7 +1366,7 @@ void menu_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
 void VINTC_API menu_update(void *ctx) {
     menu_draw();
 }
-void menu_init(void *mem, uint32_t mem_size) {
+void menu_init(void *mem, size_t mem_size) {
     tmnu_mem = (uint8_t*)mem;
     tmnu_mem_size = mem_size;
 }
@@ -1184,7 +1402,7 @@ void menu_stop() {
     interrupts_remove(tmnu_int_handle);
     tmnu_int_handle = INT_INVALID_HANDLE;
 }
-void menu_set(uint32_t item_count, TmnuMenuItemStringFn items, TmnuMenuItemOnSelectFn action, void *ctx) {
+void menu_set(size_t item_count, TmnuMenuItemStringFn items, TmnuMenuItemOnSelectFn action, void *ctx) {
     if (!tmnu_set_menu_item_string(tmnu_mem, item_count, items, ctx)) {
         LOG("failed to set main menu items");
     }
@@ -1195,46 +1413,87 @@ void menu_set(uint32_t item_count, TmnuMenuItemStringFn items, TmnuMenuItemOnSel
 #define MENU_ITEM(name,buffer,size) (memcpy_P(buffer,F(name),(sizeof(name)-1) > size ? size : (sizeof(name)-1)))
 
 //-----------------------------------------------------------------------------
+// SCHEDULE MENU
+//-----------------------------------------------------------------------------
+int csv_fd = -1;
+void schedule_menu_items(void *ctx, size_t item, char *buffer, size_t buffer_size) {
+    if (0 == item) {
+      MENU_ITEM("..", buffer, buffer_size);
+      return;
+    }
+    item--;
+    csv_read(csv_fd, item, 0, buffer, buffer_size);
+}
+void schedule_menu_return(void) {
+    schedule_menu_hash(0);
+}
+void schedule_menu_action(void *ctx, size_t item) {
+  if (0 == item) {
+    menu_stop();
+    close(csv_fd);
+    csv_fd = -1;
+    main_menu();
+    return;
+  }
+  item--;
+  menu_stop();
+  viewer_csv_row(csv_fd, item, schedule_menu_return);
+}
+void schedule_menu_hash(uint32_t hash) {
+    if ((csv_fd < 0) && (0 != hash)) {
+        csv_fd = open_hash(hash);
+    }
+    size_t items = csv_row_count(csv_fd);
+    menu_start();
+    menu_set_title(F("Schedule"));
+    menu_set(items + 1, schedule_menu_items, schedule_menu_action, NULL);
+}
+#define schedule_menu(pathname)   schedule_menu_hash(VFSC_HASH(pathname))
+
+//-----------------------------------------------------------------------------
 // LINK MENU
 //-----------------------------------------------------------------------------
-#define LINK_MENU_COUNT 2
-void link_menu_items(void *ctx, uint32_t item, char *buffer, uint32_t buffer_size) {
-    switch(item) {
-        case 0:
-            MENU_ITEM("..", buffer, buffer_size);
-            break;
-        case 1:
-            MENU_ITEM("bsides", buffer, buffer_size);
-            break;
+void link_menu_items(void *ctx, size_t item, char *buffer, size_t buffer_size) {
+    if (0 == item) {
+      MENU_ITEM("..", buffer, buffer_size);
+      return;
     }
+    item--;
+    int fd = open("/text/links.csv");
+    csv_read(fd, item, 0, buffer, buffer_size);
+    close(fd);
 }
 void link_menu_return(void) {
     link_menu();
 }
-#define LINK_ITEM(title,url) qrcode_display(url, F(title), link_menu_return)
-void link_menu_action(void *ctx, uint32_t item) {
-  switch(item) {
-        case 0:
-            menu_stop();
-            main_menu();
-            break;
-        case 1:
-            menu_stop();
-            LINK_ITEM("bsides.com.au", "https://www.bsidesau.com.au/");
-            break;
-    }
+void link_menu_action(void *ctx, size_t item) {
+  char url[200] = {0};
+  if (0 == item) {
+    menu_stop();
+    main_menu();
+    return;
+  }
+  item--;
+  int fd = open("/text/links.csv");
+  csv_read(fd, item, 1, url, sizeof(url));
+  close(fd);
+  menu_stop();
+  qrcode_display(url, link_menu_return);
 }
 void link_menu() {
+    int fd = open("/text/links.csv");
+    size_t items = csv_row_count(fd);
+    close(fd);
     menu_start();
     menu_set_title(F("Links"));
-    menu_set(LINK_MENU_COUNT, link_menu_items, link_menu_action, NULL);
+    menu_set(items + 1, link_menu_items, link_menu_action, NULL);
 }
 
 //-----------------------------------------------------------------------------
 // GAME MENU
 //-----------------------------------------------------------------------------
 #define GAME_MENU_COUNT 3
-void game_menu_items(void *ctx, uint32_t item, char *buffer, uint32_t buffer_size) {
+void game_menu_items(void *ctx, size_t item, char *buffer, size_t buffer_size) {
     switch(item) {
         case 0:
             MENU_ITEM("..", buffer, buffer_size);
@@ -1247,7 +1506,7 @@ void game_menu_items(void *ctx, uint32_t item, char *buffer, uint32_t buffer_siz
             break;
     }
 }
-void game_menu_action(void *ctx, uint32_t item) {
+void game_menu_action(void *ctx, size_t item) {
   switch(item) {
         case 0:
             menu_stop();
@@ -1272,41 +1531,50 @@ void game_menu() {
 //-----------------------------------------------------------------------------
 // MAIN MENU
 //-----------------------------------------------------------------------------
-#define MAIN_MENU_COUNT 5
-void main_menu_items(void *ctx, uint32_t item, char *buffer, uint32_t buffer_size) {
+#define MAIN_MENU_COUNT 6
+void main_menu_items(void *ctx, size_t item, char *buffer, size_t buffer_size) {
     switch(item) {
         case 0:
-            MENU_ITEM("..", buffer, buffer_size);
+            MENU_ITEM("Dial", buffer, buffer_size);
             break;
         case 1:
-            MENU_ITEM("Schedule", buffer, buffer_size);
+            MENU_ITEM("Sched. Day 1", buffer, buffer_size);
             break;
         case 2:
-            MENU_ITEM("Links", buffer, buffer_size);
+            MENU_ITEM("Sched. Day 2", buffer, buffer_size);
             break;
         case 3:
-            MENU_ITEM("Games", buffer, buffer_size);
+            MENU_ITEM("Links", buffer, buffer_size);
             break;
         case 4:
+            MENU_ITEM("Games", buffer, buffer_size);
+            break;
+        case 5:
             MENU_ITEM("Photos", buffer, buffer_size);
             break;
     }
 }
-void main_menu_action(void *ctx, uint32_t item) {
+void main_menu_action(void *ctx, size_t item) {
   switch(item) {
         case 0:
             break;
         case 1:
+            menu_stop();
+            schedule_menu("/text/schedule-day1.csv");
             break;
         case 2:
             menu_stop();
-            link_menu();
+            schedule_menu("/text/schedule-day2.csv");
             break;
         case 3:
             menu_stop();
-            game_menu();
+            link_menu();
             break;
         case 4:
+            menu_stop();
+            game_menu();
+            break;
+        case 5:
             break;
     }
 }
@@ -1327,7 +1595,7 @@ void main_menu() {
 #define APP_MEM_SIZE_5 (QR_MEM_SIZE > APP_MEM_SIZE_4 ? QR_MEM_SIZE : APP_MEM_SIZE_4)
 #define APP_MEM_SIZE    APP_MEM_SIZE_5
 static uint8_t app_mem[APP_MEM_SIZE];
-const static uint32_t app_mem_size = APP_MEM_SIZE;
+const static size_t app_mem_size = APP_MEM_SIZE;
 
 //-----------------------------------------------------------------------------
 // Main
@@ -1345,6 +1613,7 @@ void setup() {
     snake_init(app_mem, app_mem_size);
     tetris_init(app_mem, app_mem_size);
     qrcode_init(app_mem, app_mem_size);
+    viewer_init(app_mem, app_mem_size);
     menu_init(app_mem, app_mem_size);
 
     // IMAGE: BSIDESCBR
@@ -1364,11 +1633,6 @@ void setup() {
 
     // IMAGE: CYBERNATS
     screen_draw_raw("/img/cybernats.raw");
-    screen_swap_fb();
-    delay(1000);
-
-    // QR CODE GENERATOR
-    qrcode_draw("https://www.bsidesau.com.au/", F("SCAN TO UPLOAD SCORE"));
     screen_swap_fb();
     delay(1000);
 

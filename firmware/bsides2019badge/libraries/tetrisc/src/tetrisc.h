@@ -78,13 +78,13 @@ typedef struct _TTRS_DATA {
     uint8_t next_rotation;          // Rotation of the next piece
     int16_t w;
     int16_t h;
-    uint32_t board_size;
+    uint16_t board_size;
     uint8_t board[1];
 } TTRS_DATA;
 
 #define TTRS_CALC_DATA_SIZE(width, height) (sizeof(TTRS_DATA) + ((width * height) >> 3))
 
-TTRS_BOOL ttrs_init(void *data, uint32_t size);
+TTRS_BOOL ttrs_init(void *data, size_t size);
 TTRS_BOOL ttrs_set_grid(void *data, int16_t width, int16_t height);
 TTRS_BOOL ttrs_set_draw_clear(void *data, TTrsDrawClearFn func, void *ctx);
 TTRS_BOOL ttrs_set_draw_piece(void *data, TTrsDrawPieceFn func, void *ctx);

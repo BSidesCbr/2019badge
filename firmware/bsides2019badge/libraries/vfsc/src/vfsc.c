@@ -12,8 +12,8 @@ static uint32_t vfsc_read_uint32_le(void *data, void *addr) {
     return value;
 }
 
-int vfsc_init(void *data, uint32_t size, void *vfs_data, uint32_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx) {
-    int fd = 0;
+int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx) {
+    ssize_t fd = 0;
     if (!data) {
         return -1;
     }
@@ -47,8 +47,8 @@ int vfsc_init(void *data, uint32_t size, void *vfs_data, uint32_t vfs_data_size,
     return 0;
 }
 
-static uint32_t vfsc_vf_index(VFSC_DATA *vfs, uint32_t hash) {
-    uint32_t vf_index = 0;
+static ssize_t vfsc_vf_index(VFSC_DATA *vfs, uint32_t hash) {
+    ssize_t vf_index = 0;
     void *addr = VFSC_ADDR_ADD(vfs->vfs_data, VFSC_VF_OFFSET_HASH_TABLE);
     for (vf_index = 0; vf_index < vfs->vfs_file_count; vf_index++) {
         if (hash == vfsc_read_uint32_le(vfs, addr)) {
@@ -59,8 +59,8 @@ static uint32_t vfsc_vf_index(VFSC_DATA *vfs, uint32_t hash) {
     return VFSC_VF_INDEX_INVALID;
 }
 
-static int vfsc_vf_file(VFSC_DATA *vfs, uint32_t vf_index, void **data, uint32_t *size) {
-    uint32_t file_size = 0;
+static ssize_t vfsc_vf_file(VFSC_DATA *vfs, ssize_t vf_index, void **data, size_t *size) {
+    size_t file_size = 0;
     void *addr = vfs->vfs_data;
 
     // move to hash table
@@ -72,14 +72,14 @@ static int vfsc_vf_file(VFSC_DATA *vfs, uint32_t vf_index, void **data, uint32_t
     // find the file
     while (vf_index > 0) {
         // jump over this file
-        file_size = vfsc_read_uint32_le(vfs, addr);
+        file_size = (size_t)vfsc_read_uint32_le(vfs, addr);
         addr = VFSC_ADDR_ADD(addr, sizeof(uint32_t) + file_size);
         vf_index--;
     }
 
     // read the file size
     if (size) {
-        *size = vfsc_read_uint32_le(vfs, addr);
+        *size = (size_t)vfsc_read_uint32_le(vfs, addr);
     }
 
     // move past the data size to the data
@@ -92,38 +92,43 @@ static int vfsc_vf_file(VFSC_DATA *vfs, uint32_t vf_index, void **data, uint32_t
     return 0;
 }
 
-static void *vfsc_vf_addr(VFSC_DATA *vfs, uint32_t vf_index) {
-    return NULL;
-}
-
-static int vfsc_new_handle(VFSC_DATA *vfs, uint32_t vf_index) {
-    int fd = -1;
+static ssize_t vfsc_new_handle(VFSC_DATA *vfs, ssize_t vf_index) {
+    ssize_t fd = -1;
+    size_t file_size = 0;
+    void *file_data = NULL;
     if (VFSC_VF_INDEX_INVALID == vf_index) {
+        return -1;
+    }
+    if (0 != vfsc_vf_file(vfs, vf_index, &file_data, &file_size)) {
         return -1;
     }
     for (fd = 0; fd < vfs->vfs_max_handles; fd++) {
         if (VFSC_VF_INDEX_INVALID == (vfs->vf_file_handle[fd].vf_index)) {
             vfs->vf_file_handle[fd].vf_index = vf_index;
             vfs->vf_file_handle[fd].vf_offset = 0;
+            vfs->vf_file_handle[fd].data = file_data;
+            vfs->vf_file_handle[fd].size = file_size;
             return fd;
         }
     }
     return -1;
 }
 
-static int vfsc_del_handle(VFSC_DATA *vfs, int fd) {
+static ssize_t vfsc_del_handle(VFSC_DATA *vfs, ssize_t fd) {
     if (fd >= vfs->vfs_max_handles) {
         return -1;
     }
     if (VFSC_VF_INDEX_INVALID != (vfs->vf_file_handle[fd].vf_index)) {
         vfs->vf_file_handle[fd].vf_index = VFSC_VF_INDEX_INVALID;
         vfs->vf_file_handle[fd].vf_offset = 0;
+        vfs->vf_file_handle[fd].data = NULL;
+        vfs->vf_file_handle[fd].size = 0;
         return 0;
     }
     return -1;
 }
 
-static int vfsc_get_handle(VFSC_DATA *vfs, int fd, VFSC_HANDLE_DATA **handle) {
+static ssize_t vfsc_get_handle(VFSC_DATA *vfs, ssize_t fd, VFSC_HANDLE_DATA **handle) {
     if (fd >= vfs->vfs_max_handles) {
         return -1;
     }
@@ -137,7 +142,7 @@ static int vfsc_get_handle(VFSC_DATA *vfs, int fd, VFSC_HANDLE_DATA **handle) {
 }
 
 int vfsc_open_hash(void *data, uint32_t hash) {
-    uint32_t vf_index = VFSC_VF_INDEX_INVALID;
+    ssize_t vf_index = VFSC_VF_INDEX_INVALID;
     VFSC_DATA *vfs = (VFSC_DATA *)data;
     if (NULL == vfs) {
         return -1;
@@ -146,15 +151,15 @@ int vfsc_open_hash(void *data, uint32_t hash) {
     if (VFSC_VF_INDEX_INVALID == vf_index) {
         return -1;
     }
-    return vfsc_new_handle(vfs, vf_index);
+    return (int)vfsc_new_handle(vfs, vf_index);
 }
 
 ssize_t vfsc_read(void *data, int fd, void *buf, size_t count) {
     VFSC_HANDLE_DATA *handle = NULL;
-    uint32_t file_size = 0;
+    size_t file_size = 0;
     void *file_data = NULL;
-    uint32_t file_offset = 0;
-    uint32_t byte_index = 0;
+    size_t file_offset = 0;
+    size_t byte_index = 0;
     VFSC_DATA *vfs = (VFSC_DATA *)data;
     if (NULL == vfs) {
         return -1;
@@ -168,20 +173,44 @@ ssize_t vfsc_read(void *data, int fd, void *buf, size_t count) {
     if (0 != vfsc_get_handle(vfs, fd, &handle)) {
         return -1;
     }
-    if (0 != vfsc_vf_file(vfs, handle->vf_index, &file_data, &file_size)) {
-        return -1;
-    }
+    file_data = handle->data;
+    file_size = handle->size;
     if (handle->vf_offset >= file_size) {
         return 0;
     }
-    if ((handle->vf_offset + ((uint32_t)count)) > file_size) {
-        count = (size_t)(file_size - handle->vf_offset);
+    if ((((size_t)handle->vf_offset) + count) > file_size) {
+        count = file_size - (size_t)handle->vf_offset;
     }
-    for (byte_index = 0; byte_index < (uint32_t)count; byte_index++) {
+    for (byte_index = 0; byte_index < count; byte_index++) {
         *(((uint8_t*)buf) + byte_index) = vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(file_data, handle->vf_offset + byte_index));
     }
-    handle->vf_offset += (uint32_t)count;
+    handle->vf_offset += (ssize_t)count;
     return (ssize_t)count;
+}
+
+off_t vfsc_lseek(void *data, int fd, off_t offset, int whence) {
+    VFSC_HANDLE_DATA *handle = NULL;
+    size_t file_size = 0;
+    void *unused = NULL;
+    VFSC_DATA *vfs = (VFSC_DATA *)data;
+    if (NULL == vfs) {
+        return -1;
+    }
+    if (0 != vfsc_get_handle(vfs, fd, &handle)) {
+        return -1;
+    }
+    file_size = handle->size;
+    if (VFSC_SEEK_SET == whence) {
+        handle->vf_offset = (ssize_t)offset;
+    } else if (VFSC_SEEK_CUR == whence) {
+        handle->vf_offset += (ssize_t)offset;
+    } else if (VFSC_SEEK_END == whence) {
+        handle->vf_offset = (ssize_t)file_size + (ssize_t)offset;
+    }
+    if (handle->vf_offset > file_size) {
+        handle->vf_offset = (ssize_t)file_size;
+    }
+    return (off_t)handle->vf_offset;
 }
 
 int vfsc_close(void *data, int fd) {
@@ -189,7 +218,7 @@ int vfsc_close(void *data, int fd) {
     if (NULL == vfs) {
         return -1;
     }
-    return vfsc_del_handle(vfs, fd);
+    return (int)vfsc_del_handle(vfs, fd);
 }
 
 void vfsc_fini(void *data) {

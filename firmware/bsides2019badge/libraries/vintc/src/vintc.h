@@ -22,21 +22,20 @@ typedef struct _VINTC_ENTRY {
 typedef struct _VINTC_DATA {
 	void *ctx;
 	VIntCGetTickCountFn get_tick_count;
-	uint32_t table_count;
-	uint32_t reserved;
+	size_t table_count;
 	VINTC_ENTRY table[1];
 } VINTC_DATA;
 
 #define VINTC_CALC_DATA_SIZE(slots) (sizeof(VINTC_DATA) - sizeof(VINTC_ENTRY) + (slots * sizeof(VINTC_ENTRY)))
 
-typedef uint32_t VINTC_HANDLE;
-#define VINTC_INVALID_HANDLE ((VINTC_HANDLE)0xffff)
+typedef size_t VINTC_HANDLE;
+#define VINTC_INVALID_HANDLE (~((VINTC_HANDLE)0))
 
 #define VINTC_TRUE 1
 #define VINTC_FALSE 0
 typedef uint8_t VINTC_BOOL;
 
-VINTC_BOOL vintc_init(void *data, uint32_t size);
+VINTC_BOOL vintc_init(void *data, size_t size);
 VINTC_BOOL vintc_set_get_tick_count(void *data, VIntCGetTickCountFn func, void *ctx);
 VINTC_BOOL vintc_set_interrupt(void *data, uint32_t period, VIntCTockFn func, void *ctx, VINTC_HANDLE *handle);
 VINTC_BOOL vintc_remove(void *data, VINTC_HANDLE handle);

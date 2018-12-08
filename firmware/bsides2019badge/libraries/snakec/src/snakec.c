@@ -10,10 +10,10 @@ static SNKC_BOOL snkc_trail_clear(void *data) {
     return SNKC_TRUE;
 }
 
-static void snkc_trail_set(void *data, uint32_t index, uint32_t value) {
+static void snkc_trail_set(void *data, uint16_t index, uint16_t value) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t byte = 0;
-    uint32_t shift = 0;
+    uint16_t byte = 0;
+    uint16_t shift = 0;
     if (NULL == snake) {
         return;
     }
@@ -26,10 +26,10 @@ static void snkc_trail_set(void *data, uint32_t index, uint32_t value) {
     snake->trail[byte] |= (uint8_t)((value & 0x3) << shift);
 }
 
-static uint32_t snkc_trail_get(void *data, uint32_t index) {
+static uint16_t snkc_trail_get(void *data, uint16_t index) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t byte = 0;
-    uint32_t shift = 0;
+    uint16_t byte = 0;
+    uint16_t shift = 0;
     if (NULL == snake) {
         return 0;
     }
@@ -37,12 +37,12 @@ static uint32_t snkc_trail_get(void *data, uint32_t index) {
     byte = index >> 2;  // divide by 4 (>> 2)
     shift = (index & 0x3) << 1;  // value is 2 bits (0x3) and shift x 2 (<< 1)
     // get value
-    return (uint32_t)(((snake->trail[byte]) >> shift) & 0x3);
+    return (uint16_t)(((snake->trail[byte]) >> shift) & 0x3);
 }
 
-static uint32_t snkc_trail_inc(void *data, uint32_t index) {
+static uint16_t snkc_trail_inc(void *data, uint16_t index) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t size = 0;
+    uint16_t size = 0;
     if (NULL == snake) {
         return 0;
     }
@@ -54,9 +54,9 @@ static uint32_t snkc_trail_inc(void *data, uint32_t index) {
     return index;
 }
 
-static uint32_t snkc_trail_dec(void *data, uint32_t index) {
+static uint16_t snkc_trail_dec(void *data, uint16_t index) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t size = 0;
+    uint16_t size = 0;
     if (NULL == snake) {
         return 0;
     }
@@ -69,7 +69,7 @@ static uint32_t snkc_trail_dec(void *data, uint32_t index) {
     return index;
 }
 
-static uint32_t snkc_trail_encode_delta(int16_t xv, int16_t yv) {
+static uint16_t snkc_trail_encode_delta(int16_t xv, int16_t yv) {
     if ((xv < 0) && (yv == 0))
     {
         // moving left
@@ -95,7 +95,7 @@ static uint32_t snkc_trail_encode_delta(int16_t xv, int16_t yv) {
     return 0;
 }
 
-static void snkc_trail_appy_delta(void *data, uint32_t delta, int16_t *x, int16_t *y) {
+static void snkc_trail_appy_delta(void *data, uint16_t delta, int16_t *x, int16_t *y) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
     if (NULL == snake) {
         return;
@@ -137,9 +137,9 @@ static void snkc_trail_appy_delta(void *data, uint32_t delta, int16_t *x, int16_
     }
 }
 
-static uint32_t snkc_trail_size(void *data) {
+static uint16_t snkc_trail_size(void *data) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t max_size = snake->trail_array_size * 4;
+    uint16_t max_size = snake->trail_array_size * 4;
     if (NULL == snake) {
         return 0;
     }
@@ -155,11 +155,11 @@ typedef void(SNKC_API *SnkCBodyFn)(void *,int16_t,int16_t);
 
 static SNKC_BOOL snkc_trail_iterate(void *data, SnkCBodyFn callback, void *ctx) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t size = 0;
+    uint16_t size = 0;
     int16_t x = 0;
     int16_t y = 0;
-    uint32_t pos = 0;
-    uint32_t delta = 0;
+    uint16_t pos = 0;
+    uint16_t delta = 0;
     if ((NULL == snake) || (NULL == callback)) {
         return SNKC_FALSE;
     }
@@ -169,7 +169,7 @@ static SNKC_BOOL snkc_trail_iterate(void *data, SnkCBodyFn callback, void *ctx) 
     y = snake->py;
     pos = snake->trail_end;
     // use the delta(s) to trace back all the trail positions
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint16_t i = 0; i < size; i++) {
         if (0 == i) {
             // first position is the previous one
             // the current position doesn't get pushed until after the iteration
@@ -196,8 +196,8 @@ static SNKC_BOOL snkc_trail_iterate(void *data, SnkCBodyFn callback, void *ctx) 
 
 static SNKC_BOOL snkc_trail_push_back(void *data, int16_t x, int16_t y) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    uint32_t max_count = 0;
-    uint32_t delta = 0;
+    uint16_t max_count = 0;
+    uint16_t delta = 0;
     if (NULL == snake) {
         return SNKC_FALSE;
     }
@@ -274,7 +274,7 @@ static SNKC_BOOL snkc_place_apple(void *data) {
     return SNKC_TRUE;
 }
 
-SNKC_BOOL snkc_init(void *data, uint32_t size) {
+SNKC_BOOL snkc_init(void *data, size_t size) {
     if (size < sizeof(SNKC_DATA))
     {
         return SNKC_FALSE;
@@ -466,7 +466,7 @@ SNKC_BOOL snkc_key_down(void *data) {
 }
 
 SNKC_BOOL snkc_fini(void *data) {
-    uint32_t size = sizeof(SNKC_DATA);
+    uint16_t size = sizeof(SNKC_DATA);
     if (NULL == data) {
         return SNKC_FALSE;
     }

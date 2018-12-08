@@ -32,10 +32,10 @@ typedef struct _SNKC_DATA {
     int16_t py;
     int16_t ax;
     int16_t ay;
-    uint32_t tail;
-    uint32_t trail_begin;
-    uint32_t trail_end;
-    uint32_t trail_array_size;
+    uint16_t tail;
+    uint16_t trail_begin;
+    uint16_t trail_end;
+    uint16_t trail_array_size;
     uint8_t trail[1];
 } SNKC_DATA;
 
@@ -45,7 +45,7 @@ typedef struct _SNKC_DATA {
 #define SNKC_FALSE 0
 typedef uint8_t SNKC_BOOL;
 
-SNKC_BOOL snkc_init(void *data, uint32_t size);
+SNKC_BOOL snkc_init(void *data, size_t size);
 SNKC_BOOL snkc_set_grid(void *data, int16_t width, int16_t height);
 SNKC_BOOL snkc_set_draw_clear(void *data, SnkCDrawClearFn func, void *ctx);
 SNKC_BOOL snkc_set_draw_empty(void *data, SnkCDrawSquareFn func, void *ctx);
