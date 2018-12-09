@@ -12,6 +12,7 @@ extern "C" {
 typedef void(SNKC_API *SnkCDrawClearFn)(void *);
 typedef void(SNKC_API *SnkCDrawSquareFn)(void *,int16_t,int16_t);
 typedef int16_t(SNKC_API *SnkCRandomFn)(void *,int16_t,int16_t);
+typedef void(SNKC_API *SnkCGameOverFn)(void *,uint16_t);
 
 typedef struct _SNKC_DATA {
     void *draw_clear_ctx;
@@ -24,6 +25,8 @@ typedef struct _SNKC_DATA {
     SnkCDrawSquareFn draw_apple;
     void *random_ctx;
     SnkCRandomFn random;
+    void *game_over_ctx;
+    SnkCGameOverFn game_over;
     int16_t w;
     int16_t h;
     int16_t xv;
@@ -32,6 +35,7 @@ typedef struct _SNKC_DATA {
     int16_t py;
     int16_t ax;
     int16_t ay;
+    uint16_t score;
     uint16_t tail;
     uint16_t trail_begin;
     uint16_t trail_end;
@@ -52,6 +56,7 @@ SNKC_BOOL snkc_set_draw_empty(void *data, SnkCDrawSquareFn func, void *ctx);
 SNKC_BOOL snkc_set_draw_snake(void *data, SnkCDrawSquareFn func, void *ctx);
 SNKC_BOOL snkc_set_draw_apple(void *data, SnkCDrawSquareFn func, void *ctx);
 SNKC_BOOL snkc_set_random(void *data, SnkCRandomFn func, void *ctx);
+SNKC_BOOL snkc_set_game_over(void *data, SnkCGameOverFn func, void *ctx);
 SNKC_BOOL snkc_reset(void *data);
 SNKC_BOOL snkc_key_left(void *data);
 SNKC_BOOL snkc_key_up(void *data);

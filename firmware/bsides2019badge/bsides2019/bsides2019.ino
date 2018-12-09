@@ -27,26 +27,21 @@
 #define BUTTON_RIGHT      2
 
 //-----------------------------------------------------------------------------
-// Schedule
+// Logging
 //-----------------------------------------------------------------------------
-typedef struct _ScheduleItem {
-   const char *start_time;
-   const char *end_time;
-   const char *title;
-   const char *presenters;
-   const char *description;
-} ScheduleItem;
-
-/*
-const ScheduleItem schedule_day_1[] = {
-  { F("9:00am"), F("9:10am"), F("Conference Opening"), F("Silvio & Kylie"), F("(desc1)") },
-  { F("9:10am"), F("10:00am"), F("Keynote - My Cyber is Trickling Down and the other Diverse Problems of the Aging Hacker"), F("Metlstorm"), F("(desc2)") },
-};*/
-/*
-const unsigned char schedule_data[] = {
-   '\x00', '\x00',
-};
-*/
+#define LOG(msg)          Serial.println(F(msg))
+#define LOG_HEX(number)   Serial.println(number,HEX)
+#define LOG_DEC(number)   Serial.println(number,DEC)
+void log_err_imp(uint16_t item_encoded) {
+    uint8_t item = (uint8_t)((item_encoded >> 8) & 0xff);
+    uint8_t subitem = (uint8_t)((item_encoded >> 0) & 0xff);
+    Serial.print(F("LOG_ERR("));
+    Serial.print(item, DEC);
+    Serial.print(F(","));
+    Serial.print(subitem, DEC);
+    Serial.println(F(");"));
+}
+#define LOG_ERR(item,subitem) log_err_imp(((item<<8)&0xff00)|((subitem<<0)&0x00ff))
 
 //-----------------------------------------------------------------------------
 // Serial
@@ -54,14 +49,8 @@ const unsigned char schedule_data[] = {
 void serial_init() {
     Serial.begin(115200);
     while (!Serial);
-    Serial.println("Serial ready");
+    LOG("NOPIA 1337");
 }
-
-//-----------------------------------------------------------------------------
-// Logging
-//-----------------------------------------------------------------------------
-#define LOG(msg)  Serial.println(F(msg))
-
 
 //-----------------------------------------------------------------------------
 // Virtual File System (VFS)
@@ -72,7 +61,7 @@ uint8_t VFSC_API vfs_read_byte(void *ctx, void *addr) {
 }
 void vfs_init() {
   if (0 != vfsc_init(vfs, sizeof(vfs), vfs_data, (size_t)vfs_size, vfs_read_byte, NULL)) {
-    LOG("failed to init vfs");
+    LOG_ERR(1,0);
   }
 }
 #define open_hash(hash,...)     vfsc_open_hash(vfs,hash)
@@ -90,11 +79,11 @@ void vfs_init() {
 ssize_t CSVC_API csv_read_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
   int fd = (int)ctx;
   if (fd < 0) {
-    LOG("CSV read invalid file handle");
+    LOG_ERR(2,0);
     return -1;
   }
   if (offset != (size_t)lseek(fd, offset, SEEK_SET)) {
-    LOG("CSV seek into file failed");
+    LOG_ERR(2,1);
     return -1;
   }
   return read(fd, buffer, buffer_size);
@@ -105,17 +94,17 @@ size_t csv_row_count(int fd)
   size_t size = 0;
   off_t offset = lseek(fd, 0, SEEK_END);
   if (offset < 0) {
-    LOG("Failed to determine size of CSV file");
+    LOG_ERR(2,2);
     return 0;
   }
   size = (size_t)offset;
   offset = lseek(fd, 0, SEEK_SET);
   if (offset != 0) {
-    LOG("Failed to return to start of CSV file");
+    LOG_ERR(2,3);
     return 0;
   }
   if (!csvc_dimensions(size, csv_read_api, (void *)fd, &rows, NULL)) {
-    LOG("Failed to count rows and columns");
+    LOG_ERR(2,4);
     return 0;
   }
   return rows;
@@ -124,17 +113,17 @@ void csv_for_each_cell(int fd, CsvcCellFn cell_fn, void *cell_ctx, char *buffer,
   size_t size = 0;
   off_t offset = lseek(fd, 0, SEEK_END);
   if (offset < 0) {
-    LOG("Failed to determine size of CSV file");
+    LOG_ERR(2,5);
     return;
   }
   size = (size_t)offset;
   offset = lseek(fd, 0, SEEK_SET);
   if (offset != 0) {
-    LOG("Failed to return to start of CSV file");
+    LOG_ERR(2,6);
     return;
   }
   if (!csvc_for_each_cell(size, csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
-    LOG("Failed to iterate over CSV cells");
+    LOG_ERR(2,7);
     return;
   }
 }
@@ -154,18 +143,18 @@ void csv_read(int fd, size_t row, size_t column, char *buffer, size_t buffer_siz
   size_t size = 0;
   off_t offset = lseek(fd, 0, SEEK_END);
   if (offset < 0) {
-    LOG("Failed to determine size of CSV file");
+    LOG_ERR(2,8);
     return;
   }
   size = (size_t)offset;
   offset = lseek(fd, 0, SEEK_SET);
   if (offset != 0) {
-    LOG("Failed to return to start of CSV file");
+    LOG_ERR(2,9);
     return;
   }
   buffer[0] = '\0';
   if (!csvc_read_cell(size, csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
-    LOG("Failed to read a single CSV cell");
+    LOG_ERR(2,10);
   }
 }
 off_t csv_lseek(int fd, size_t row, size_t column) {
@@ -194,6 +183,20 @@ size_t csv_row_size(int fd, size_t row) {
 }
 
 //-----------------------------------------------------------------------------
+// Unique device ID
+//-----------------------------------------------------------------------------
+uint32_t device_id(void) {
+    uint32_t dev_id = 0;
+    int fd = open("/dev/id");
+    if (fd >= 0) {
+        if (4 == read(fd, &dev_id, sizeof(uint32_t))) {
+            return dev_id;
+        }
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------------------
 // Random
 //-----------------------------------------------------------------------------
 void rng_init() {
@@ -218,23 +221,23 @@ void interrupts_init() {
     // Virtual interrupts
     if (!vintc_init(interrupts, sizeof(interrupts)))
     {
-        LOG("init interrupts failed");
+        LOG_ERR(3,0);
     }
     if (!vintc_set_get_tick_count(interrupts, interrupts_get_tick_count_api, NULL))
     {
-        LOG("interrupts set get tick count failed");
+        LOG_ERR(3,1);
     }
 }
 void interrupts_tick() {
     if(!vintc_run_loop(interrupts)) {
-        LOG("interrupts run loop failed");
+        LOG_ERR(3,2);
     }
 }
 size_t interrupts_set(uint32_t period_ms, VIntCTockFn func, void *ctx) {
     VINTC_HANDLE handle = VINTC_INVALID_HANDLE;
     if (!vintc_set_interrupt(interrupts, period_ms, func, ctx, &handle))
     {
-        LOG("set interrupt failed");
+        LOG_ERR(3,3);
         return INT_INVALID_HANDLE;
     }
     return (size_t)handle;
@@ -242,7 +245,7 @@ size_t interrupts_set(uint32_t period_ms, VIntCTockFn func, void *ctx) {
 void interrupts_remove(size_t handle) {
     if (!vintc_remove(interrupts, (VINTC_HANDLE)handle))
     {
-        LOG("reomve interrupt failed");
+        LOG_ERR(3,4);
     }
 }
 
@@ -384,7 +387,7 @@ void nokia_draw_img(void *data, size_t x = 0, size_t y = 0, size_t width = NOKIA
 void nokia_draw_raw_hash(uint32_t hash, size_t x = 0, size_t y = 0, size_t width = NOKIA_SCREEN_WIDTH, size_t height = NOKIA_SCREEN_HEIGHT) {
     int fd = open_hash(hash);
     if (fd < 0) {
-      LOG("Failed to open bitmap");
+      LOG_ERR(4,0);
     }
     uint8_t value = 0;
     for (size_t dy = 0; dy < height; dy++) {
@@ -393,7 +396,7 @@ void nokia_draw_raw_hash(uint32_t hash, size_t x = 0, size_t y = 0, size_t width
             size_t index_bit = 7 - (index % 8);
             if (0 == (index % 8)) {
                 if (1 != read(fd, &value, sizeof(uint8_t))) {
-                    LOG("Failed read byte from bitmap");
+                    LOG_ERR(4,1);
                     close(fd);
                     return;
                 }
@@ -484,16 +487,16 @@ void screen_init() {
     // Add all the drawing APIs we need
     memset(&screen, 0, sizeof(screen));
     if (!vg2d_init(&screen, sizeof(VGFX_CANVAS_2D_DATA))) {
-        LOG("screen canvas2d init failed");
+        LOG_ERR(5,0);
     }
     if (!vg2d_set_draw_clear(&screen, screen_draw_clear_api, NULL)) {
-        LOG("screen canvas2d set draw clear failed");
+        LOG_ERR(5,1);
     }
     if (!vg2d_set_draw_pixel(&screen, screen_draw_pixel_api, NULL)) {
-        LOG("screen canvas2d set draw pixel failed");
+        LOG_ERR(5,2);
     }
     if (!vg2d_set_draw_char(&screen, screen_draw_char_api, NULL, F46C_WIDTH, F46C_HEIGHT)) {
-        LOG("screen canvas2d set draw char failed");
+        LOG_ERR(5,3);
     }
 }
 void screen_draw_img(void *data) {
@@ -598,13 +601,671 @@ void game_menu();
 void main_menu();
 
 //-----------------------------------------------------------------------------
+// QR Code
+//-----------------------------------------------------------------------------
+#define qrcodegen_MAX_VERSION   6
+#define QR_MEM_QR_CODE_SIZE     (qrcodegen_BUFFER_LEN_FOR_VERSION(qrcodegen_MAX_VERSION))
+#define QR_MEM_TEMP_SIZE        (qrcodegen_BUFFER_LEN_FOR_VERSION(qrcodegen_MAX_VERSION))
+#define QR_MEM_SIZE             (QR_MEM_QR_CODE_SIZE) // + QR_MEM_TEMP_SIZE)
+static uint8_t *qrcode_mem = NULL;
+static uint8_t *qrcode_temp_mem = NULL;
+void qrcode_init(void *mem, size_t mem_size) {
+  if (mem_size < QR_MEM_SIZE) {
+    return;
+  }
+  qrcode_mem = (uint8_t*)mem;
+  qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
+}
+void qrcode_draw(void *text) {
+  bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, qrcodegen_Ecc_LOW,
+    qrcodegen_MAX_VERSION, qrcodegen_MAX_VERSION, qrcodegen_Mask_0, true);
+  if (!ok) {
+    LOG_ERR(6,0);
+    return;
+  }
+  int size = qrcodegen_getSize(qrcode_mem);
+  int x_offset = (SCREEN_WIDTH / 2) - (size / 2);
+  int y_offset = 0; //(SCREEN_HEIGHT / 2) - (size / 2);
+  screen_draw_clear();
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
+    }
+  }
+}
+typedef void (*QRCodeFn)(void);
+void qrcode_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+    QRCodeFn backfn = (QRCodeFn)ctx;
+    if (BUTTON_KEY_LEFT == key) {
+        backfn();
+    }
+}
+void qrcode_display(void *text, void* backfn) {
+    qrcode_draw(text);
+    screen_swap_fb();
+    button_set_callback(qrcode_button_press, (void*)backfn);
+}
+
+    
+//-----------------------------------------------------------------------------
+// Score (upload via QR code)
+//-----------------------------------------------------------------------------
+#define SCORE_CODE_SNAKE          0x55
+#define SCORE_CODE_TETRIS         0xaa
+#define SCORE_FORMAT_BUFFER_SIZE  (sizeof("3123456789"))
+void score_format(char *buffer, size_t buffer_size, uint16_t score) {
+    if (buffer_size < SCORE_FORMAT_BUFFER_SIZE) {
+        buffer[0] = '\0';
+        return;
+    }
+    sprintf(buffer, "%lu", ((unsigned long)score) * 100);
+}
+void score_token_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
+    // for now, just a hex token
+    if (buffer_size <= 0) {
+        return;
+    }
+    if (buffer_size < ((data_size * 2) + 1)) {
+        buffer[0] = '\0';
+        return;
+    }
+    for (size_t i = 0; i < data_size; i++) {
+        sprintf(&(buffer[i*2]), "%02x", data[i]);
+    }
+}
+void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
+    uint8_t token[16];
+    uint32_t token_device_id = device_id();
+    uint32_t token_score = ((uint32_t)score) * 100;
+    memset(token, 0, sizeof(token));
+    memcpy(token + 0, &token_device_id, 4);
+    memcpy(token + 4, &token_score, 4);
+    memcpy(token + 8, &game, 1);
+    // 7 bytes left for authentication
+    // encode token
+    score_token_encode(buffer, buffer_size, token, sizeof(token));
+}
+void score_upload(uint8_t game, uint16_t score, void *backfn) {
+    char url[100];
+    int fd = open("/text/score-url.txt");
+    memset(url, 0, sizeof(url));
+    if (fd >= 0) {
+        if (read(fd, url, sizeof(url)-1) > 10) {
+            score_token(url+strlen(url), (sizeof(url)-1)-strlen(url), game, score);
+            qrcode_display(url, backfn);
+            memset(url, 0, sizeof(url));
+            memcpy_P(url, F("UPLOAD SCORE "), sizeof("UPLOAD SCORE "));
+            screen_draw_string(0, SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+            url[0] = ' ';
+            score_format(url+1, sizeof(url)-1, score);
+            screen_draw_string(SCREEN_WIDTH-(strlen(url) * SCREEN_FONT_WIDTH), SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+            screen_swap_fb();
+        }
+        close(fd);
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Snake
+//-----------------------------------------------------------------------------
+#define SNAKE_SQUARE_SIZE   3
+#define SNAKE_GRID_OFFSET   2
+#define SNAKE_GRID_WIDTH    ((SCREEN_WIDTH - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
+#define SNAKE_GRID_HEIGHT   ((SCREEN_HEIGHT - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
+#define SNAKE_GAME_MEM_SIZE (SNKC_CALC_DATA_SIZE(SNAKE_GRID_WIDTH,SNAKE_GRID_HEIGHT))
+static uint8_t *snkc_mem = NULL;
+static size_t snkc_mem_size = 0;
+static size_t snkc_int_handle = INT_INVALID_HANDLE;
+static uint8_t snake_direction = 0xff;
+void SNKC_API snake_draw_clear_api(void *ctx) {
+    screen_draw_clear();
+}
+void SNKC_API snake_draw_snake_api(void *ctx, int16_t x, int16_t y) {
+    x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
+    y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
+    screen_fill_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+}
+void SNKC_API snake_draw_apple_api(void *ctx, int16_t x, int16_t y) {
+    x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
+    y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
+    screen_draw_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+}
+int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
+    return rng_random_s16(min, max);
+}
+void snake_start();
+void snake_stop();
+void snake_game_return(void) {
+    snake_start();
+}
+void SNKC_API snake_game_over_api(void *ctx, uint16_t score) {
+    snake_stop();
+    score_upload(SCORE_CODE_SNAKE, score, snake_game_return);
+}
+void snake_draw_end() {
+    screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
+    screen_swap_fb();
+}
+void VINTC_API snake_tick_api(void *ctx) {
+    if(!snkc_tick(snkc_mem)) {
+        LOG_ERR(7,0);
+    }
+    if (INT_INVALID_HANDLE != snkc_int_handle) {
+        snake_draw_end();
+    }
+}
+void snake_stop() {
+    interrupts_remove(snkc_int_handle);
+    snkc_int_handle = INT_INVALID_HANDLE;
+    memset(snkc_mem, 0, snkc_mem_size);
+}
+void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  int8_t new_direction = (int8_t)snake_direction;
+  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
+    if (duration > 1000) {
+        // return to menu
+        snake_stop();
+        game_menu();
+        return;
+    }
+  }
+  if (BUTTON_UP == down) {
+    return;
+  }
+  switch(key) {
+    case BUTTON_KEY_LEFT:
+      if (0xff == snake_direction) {
+        new_direction = 0;  // start going LEFT
+      } else if ((1 == snake_direction) || (3 == snake_direction)) {
+        // up or down - go left
+        new_direction = 0;  // LEFT
+      } else {
+        // left or right - go up
+        new_direction = 1;  // UP
+      }
+      break;
+    case BUTTON_KEY_RIGHT:
+      if (0xff == snake_direction) {
+        new_direction = 2;  // start going RIGHT
+      } else if ((0 == snake_direction) || (2 == snake_direction)) {
+        // left or right - go down
+        new_direction = 3;  // DOWN
+      } else {
+        // up or down - go right
+        new_direction = 2;  // RIGHT
+      }
+      break;
+    case BUTTON_KEY_OK:
+      // rotate clockwise
+      new_direction++;
+      if (new_direction > 3) {
+          new_direction = 0;
+      }
+      break;
+    default:
+      return;
+      break;
+  }
+  if (new_direction < 0) {
+    new_direction = 3;
+  }
+  if (new_direction > 3) {
+    new_direction = 0;
+  }
+  snake_direction = (uint8_t)new_direction;
+  switch(snake_direction) {
+    case 0:
+      if(!snkc_key_left(snkc_mem)) {
+          LOG_ERR(7,1);
+      }
+      snake_draw_end();
+      break;
+    case 1:
+      if(!snkc_key_up(snkc_mem)) {
+          LOG_ERR(7,2);
+      }
+      snake_draw_end();
+      break;
+    case 2:
+      if(!snkc_key_right(snkc_mem)) {
+          LOG_ERR(7,3);
+      }
+      snake_draw_end();
+      break;
+    case 3:
+      if(!snkc_key_down(snkc_mem)) {
+          LOG_ERR(7,4);
+      }
+      snake_draw_end();
+      break;
+    default:
+      break;
+  }
+}
+void snake_init(void *mem, size_t mem_size) {
+    snkc_mem = (uint8_t*)mem;
+    snkc_mem_size = mem_size;
+}
+void snake_start() {
+    snake_direction = 0xff;
+
+    // Snake game
+    if (!snkc_init(snkc_mem, snkc_mem_size))
+    {
+        LOG_ERR(7,5);
+    }
+    if (!snkc_set_grid(snkc_mem, SNAKE_GRID_WIDTH, SNAKE_GRID_HEIGHT))
+    {
+        LOG_ERR(7,6);
+    }
+
+     // Snake will draw on the screen
+    if (!snkc_set_draw_clear(snkc_mem, snake_draw_clear_api, &screen)) {
+        LOG_ERR(7,7);
+    }
+    if (!snkc_set_draw_snake(snkc_mem, snake_draw_snake_api, &screen)) {
+        LOG_ERR(7,8);
+    }
+    if (!snkc_set_draw_apple(snkc_mem, snake_draw_apple_api, &screen)) {
+        LOG_ERR(7,9);
+    }
+    if (!snkc_set_random(snkc_mem, snake_random_api, NULL)) {
+        LOG_ERR(7,10);
+    }
+    if (!snkc_set_game_over(snkc_mem, snake_game_over_api, NULL)) {
+        LOG_ERR(7,11);
+    }
+
+    // Snake frame rate
+    snkc_int_handle = interrupts_set(1000/15, snake_tick_api, snkc_mem);
+
+    // Snake buttons
+    button_set_callback(snake_button_press, NULL);
+
+    // Game reset
+    if (!snkc_reset(snkc_mem))
+    {
+        LOG_ERR(7,12);
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Tetris
+//-----------------------------------------------------------------------------
+#define TETRIS_SQUARE_SIZE    2
+#define TETRIS_GRID_OFFSET    2
+#define TETRIS_GRID_WIDTH     10
+#define TETRIS_GRID_HEIGHT    ((SCREEN_HEIGHT - (TETRIS_GRID_OFFSET * 2)) / TETRIS_SQUARE_SIZE)
+#define TETRIS_DISPLAY_WIDTH  ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_WIDTH * TETRIS_SQUARE_SIZE))
+#define TETRIS_DISPLAY_HEIGHT ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_HEIGHT * TETRIS_SQUARE_SIZE))
+#define TETRIS_DISPLAY_OFFSET ((SCREEN_WIDTH / 2) - (TETRIS_DISPLAY_WIDTH / 2))
+#define TETRIS_NEXT_PIECE_OFFSET 2
+#define TETRIS_NEXT_PIECE_SQUARE_SIZE 4
+#define TETRIS_GAME_MEM_SIZE (TTRS_CALC_DATA_SIZE(TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
+static uint8_t *ttrs_mem = NULL;
+static size_t ttrs_mem_size = 0;
+static size_t ttrs_int_handle = INT_INVALID_HANDLE;
+void TTRS_API tetris_draw_clear(void *ctx) {
+    screen_draw_clear();
+}
+void TTRS_API tetris_draw_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
+    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
+    y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
+    screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+}
+void TTRS_API tetris_draw_next_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
+    x = TETRIS_NEXT_PIECE_OFFSET + (x * TETRIS_NEXT_PIECE_SQUARE_SIZE);
+    y = TETRIS_NEXT_PIECE_OFFSET + (y * TETRIS_NEXT_PIECE_SQUARE_SIZE);
+    screen_draw_rect(x, y, TETRIS_NEXT_PIECE_SQUARE_SIZE, TETRIS_NEXT_PIECE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+}
+void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
+    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
+    y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
+    screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+}
+int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
+    return rng_random_s16(min, max);
+}
+void tetris_start();
+void tetris_stop();
+void tetris_game_return(void) {
+    tetris_start();
+}
+void TTRS_API tetris_game_over(void *ctx, uint16_t score) {
+    tetris_stop();
+    score_upload(SCORE_CODE_TETRIS, score, tetris_game_return);
+}
+void tetris_draw_end() {
+    screen_draw_rect(TETRIS_DISPLAY_OFFSET, 0, TETRIS_DISPLAY_WIDTH, TETRIS_DISPLAY_HEIGHT, SCREEN_COLOR_BLACK);
+    screen_swap_fb();
+}
+void VINTC_API tetris_tick(void *ctx) {
+    screen_draw_clear();
+    if(!ttrs_tick(ttrs_mem)) {
+        LOG_ERR(8,0);
+    }
+    if (INT_INVALID_HANDLE != ttrs_int_handle) {
+        tetris_draw_end();
+    }
+}
+void tetris_stop() {
+    interrupts_remove(ttrs_int_handle);
+    ttrs_int_handle = INT_INVALID_HANDLE;
+    memset(ttrs_mem, 0, ttrs_mem_size);
+}
+void tetris_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  if (BUTTON_DOWN == down) {
+    switch(key) {
+      case BUTTON_KEY_LEFT:
+        if(!ttrs_key_left(ttrs_mem)) {
+            LOG_ERR(8,1);
+        }
+        tetris_draw_end();
+        break;
+      case BUTTON_KEY_RIGHT:
+        if(!ttrs_key_right(ttrs_mem)) {
+            LOG_ERR(8,2);
+        }
+        tetris_draw_end();
+        break;
+      default:
+        break;
+    }
+  }
+  if ((BUTTON_UP == down) && (BUTTON_KEY_OK == key)) {
+    if (duration > 500) {
+        if(!ttrs_key_drop(ttrs_mem)) {
+            LOG_ERR(8,3);
+        }
+        tetris_draw_end();
+    } else {
+        if(!ttrs_key_rotate(ttrs_mem)) {
+            LOG_ERR(8,4);
+        }
+        tetris_draw_end();
+    }
+  }
+  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
+    if (duration > 1000) {
+        // return to menu
+        tetris_stop();
+        game_menu();
+        return;
+    }
+  }
+}
+void tetris_init(void *mem, size_t mem_size) {
+    ttrs_mem = (uint8_t*)mem;
+    ttrs_mem_size = mem_size;
+}
+void tetris_start() {
+    // Tetris game
+    if (!ttrs_init(ttrs_mem, ttrs_mem_size))
+    {
+        LOG_ERR(8,5);
+    }
+    if (!ttrs_set_grid(ttrs_mem, TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
+    {
+        LOG_ERR(8,6);
+    }
+
+    // Tetris will draw on the screen
+    if (!ttrs_set_draw_clear(ttrs_mem, tetris_draw_clear, &screen)) {
+        LOG_ERR(8,7);
+    }
+    if (!ttrs_set_draw_piece(ttrs_mem, tetris_draw_piece, &screen)) {
+        LOG_ERR(8,8);
+    }
+    if (!ttrs_set_draw_next_piece(ttrs_mem, tetris_draw_next_piece, &screen)) {
+        LOG_ERR(8,9);
+    }
+    if (!ttrs_set_draw_block(ttrs_mem, tetris_draw_block, &screen)) {
+        LOG_ERR(8,10);
+    }
+    if (!ttrs_set_random(ttrs_mem, tetris_random, NULL)) {
+        LOG_ERR(8,11);
+    }
+    if (!ttrs_set_game_over(ttrs_mem, tetris_game_over, NULL)) {
+        LOG_ERR(8,12);
+    }
+
+    // Tetris buttons
+    button_set_callback(tetris_button_press, NULL);
+
+    // Tetris frame rate
+    ttrs_int_handle = interrupts_set(700, tetris_tick, ttrs_mem);
+
+    // Tetris reset
+    if (!ttrs_reset(ttrs_mem))
+    {
+        LOG_ERR(8,13);
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Text viewer
+//-----------------------------------------------------------------------------
+#define TEXT_VIEWER_CHARS_PER_LINE    (SCREEN_WIDTH/SCREEN_FONT_WIDTH)
+#define TEXT_VIEWER_MEM_SIZE          (VWRC_CALC_DATA_SIZE(TEXT_VIEWER_CHARS_PER_LINE))
+static uint8_t *vwrc_mem = NULL;
+static size_t vwrc_mem_size = 0;
+static size_t vwrc_data_size = 0;
+static const char *vwrc_c_str = 0;
+static off_t vwrc_csv_offset = 0;
+static ssize_t vwrc_csv_row_size = 0;
+ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+    if (buffer_size >= vwrc_data_size) {
+        // can't read more than the amount of data we have
+        buffer_size = vwrc_data_size;
+    }
+    if (offset >= vwrc_data_size) {
+        // read out of bounds
+        return -1;
+    }
+    if ((offset + buffer_size) > vwrc_data_size) {
+        // reading the last few bytes at the end
+        buffer_size = vwrc_data_size - offset;
+    }
+    if (0 == buffer_size) {
+        // no data was requested
+        return 0;
+    }
+    memcpy(buffer, vwrc_c_str + offset, buffer_size);
+    return (ssize_t)buffer_size;
+}
+ssize_t VWRC_API viewer_read_csv_row(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+    int fd = (int)ctx;
+    if (buffer_size >= vwrc_csv_row_size) {
+        // can't read more than the amount of data we have
+        buffer_size = vwrc_data_size;
+    }
+    if (offset >= vwrc_csv_row_size) {
+        // read out of bounds
+        LOG_ERR(9,50);
+        return -1;
+    }
+    if ((offset + buffer_size) > vwrc_csv_row_size) {
+        // reading the last few bytes at the end
+        buffer_size = vwrc_csv_row_size - offset;
+    }
+    if (0 == buffer_size) {
+        // no data was requested
+        LOG_ERR(9,51);
+        return 0;
+    }
+    (void) lseek(fd, vwrc_csv_offset + offset, SEEK_SET);
+    for (size_t i = 0; i < buffer_size; i++) {
+        if (1 != read(fd, &(buffer[i]), 1)) {
+            return (ssize_t)i;
+        }
+        if (buffer[i] == ',') {
+            // makes the schedule look nicer
+            if (offset < 10) {
+                // put a '-' between the times
+                buffer[i] = '-';
+            } else {
+                buffer[i] = '\n';
+            }
+        }
+    }
+    return (ssize_t)buffer_size;
+}
+ssize_t VWRC_API viewer_read_file_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+    int fd = (int)ctx;
+    lseek(fd, offset, SEEK_SET);
+    return read(fd, buffer, buffer_size);
+}
+void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
+    if (width) {
+        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str));
+    }
+    if (height) {
+        *height = SCREEN_FONT_HEIGHT;
+    }
+}
+void VWRC_API viewer_draw_string_api(void *ctx, size_t x, size_t y, const char *str) {
+    screen_draw_string(x, y, str, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+}
+void viewer_draw() {
+    size_t row = 0;
+    size_t row_count = 0;
+    size_t rows_per_view = 0;
+    size_t y = 0;
+    size_t h = 0;
+    screen_draw_clear();
+    if (!vwrc_draw_view(vwrc_mem)) {
+        LOG_ERR(9,0);
+    }
+    if (!vwrc_get_row(vwrc_mem, &row)) {
+        LOG_ERR(9,1);
+    }
+    if (!vwrc_get_row_count(vwrc_mem, &row_count)) {
+        LOG_ERR(9,2);
+    }
+    if (!vwrc_get_rows_per_view(vwrc_mem, &rows_per_view)) {
+        LOG_ERR(9,3);
+    }
+    if (rows_per_view < row_count) {
+      // progress bars required
+      y = (SCREEN_HEIGHT * row) / row_count;
+      h = (SCREEN_HEIGHT * rows_per_view) / row_count;
+      screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
+    }
+}
+typedef void (*ViewerFn)(void);
+void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+  ViewerFn backfn = (ViewerFn)ctx;
+  if (BUTTON_DOWN == down) {
+    switch(key) {
+      case BUTTON_KEY_LEFT:
+        if (!vwrc_scroll_up(vwrc_mem)) {
+            LOG_ERR(9,4);
+        }
+        viewer_draw();
+        screen_swap_fb();
+        break;
+      case BUTTON_KEY_OK:
+        backfn();
+        break;
+      case BUTTON_KEY_RIGHT:
+        if (!vwrc_scroll_down(vwrc_mem)) {
+            LOG_ERR(9,5);
+        }
+        viewer_draw();
+        screen_swap_fb();
+        break;
+      default:
+        break;
+    }
+  }
+}
+void viewer_init(void *mem, size_t mem_size) {
+    vwrc_mem = (uint8_t*)mem;
+    vwrc_mem_size = mem_size;
+}
+void viewer_start(void* backfn) {
+
+    // reset
+    vwrc_data_size = 0;
+    vwrc_c_str = NULL;
+
+    // init
+    if (!vwrc_init(vwrc_mem, vwrc_mem_size)) {
+        LOG_ERR(9,6);
+    }
+
+    // view size (2 pixels for scroll bar)
+    if (!vwrc_set_view(vwrc_mem, SCREEN_WIDTH - 2, SCREEN_HEIGHT)) {
+        LOG_ERR(9,7);
+    }
+
+    // how to calculate the pixel size of a string
+    if (!vwrc_set_calc_string_view(vwrc_mem, viewer_calc_string_view_api, NULL)) {
+        LOG_ERR(9,8);
+    }
+
+    // how to draw the text in the view
+    if (!vwrc_set_draw_string(vwrc_mem, viewer_draw_string_api, NULL)) {
+        LOG_ERR(9,9);
+    }
+
+    // Viewer buttons
+    button_set_callback(viewer_button_press, backfn);
+}
+void viewer_c_str(const char *text, void* backfn) {
+    viewer_start(backfn);
+    vwrc_c_str = text;
+    vwrc_data_size = (size_t)strlen(text);
+    if (!vwrc_set_text(vwrc_mem, vwrc_data_size, viewer_read_c_str_api, NULL)) {
+        LOG_ERR(9,10);
+    }
+    viewer_draw();
+    screen_swap_fb();
+}
+void viewer_csv_row(int fd, size_t row, void* backfn) {
+    viewer_start(backfn);
+    vwrc_csv_offset = csv_lseek(fd, row, 0);
+    if (vwrc_csv_offset < 0) {
+      LOG_ERR(9,11);
+    }
+    vwrc_csv_row_size = csv_row_size(fd, row);
+    if (0 == vwrc_csv_row_size) {
+      LOG_ERR(9,12);
+    }
+    if (!vwrc_set_text(vwrc_mem, vwrc_csv_row_size, viewer_read_csv_row, (void*)fd)) {
+        LOG_ERR(9,13);
+    }
+    viewer_draw();
+    screen_swap_fb();
+}
+void viewer_file(int fd, void* backfn) {
+    viewer_start(backfn);
+    off_t offset = lseek(fd, 0, SEEK_END);
+    if (offset < 0) {
+        LOG_ERR(9,14);
+        ((ViewerFn)backfn)();
+        return;
+    }
+    size_t file_size = (size_t)offset;
+    if (!vwrc_set_text(vwrc_mem, file_size, viewer_read_file_api, (void*)fd)) {
+        LOG_ERR(9,15);
+        ((ViewerFn)backfn)();
+        return;
+    }
+    viewer_draw();
+    screen_swap_fb();
+}
+
+//-----------------------------------------------------------------------------
 // Dialer
 //-----------------------------------------------------------------------------
 typedef struct {
     uint8_t dialer_x;
     uint8_t dialer_y;
     char dialer_number[13];
+    char expect_number[20];
 } dialer_mem_t;
+int dialder_fd = -1;
 #define DIALER_MEM_SIZE (sizeof(dialer_mem_t))
 dialer_mem_t *dialer = NULL;
 #define DIALER_BUTTON_OFFSET_X  18
@@ -685,6 +1346,33 @@ void dialer_draw() {
 void dialer_stop() {
 
 }
+void dialer_start(void);
+void dialer_return(void) {
+    if (dialder_fd >= 0) {
+        close(dialder_fd);
+        dialder_fd = -1;
+    }
+    dialer_start();
+}
+bool dialer_check_P(const char *number, void *expected_P) {
+    memcpy_P(dialer->expect_number, expected_P, sizeof(dialer->expect_number));
+    return 0 == strcmp(number, dialer->expect_number);
+}
+#define DIALER_CHECK(number,expected)  dialer_check_P(number, F(expected))
+#define DIAL_FILE(number,expected,pathname) \
+    if (DIALER_CHECK(number, expected)) { \
+        dialer_stop(); \
+        dialder_fd = open(pathname); \
+        viewer_file(dialder_fd, dialer_return); \
+        return; \
+    }
+void dialer_action(const char *number) {
+    DIAL_FILE(number, "*#0000#", "/dev/version");
+    DIAL_FILE(number, "*#06#", "/dev/imei");
+    memset(dialer->dialer_number, 0, sizeof(dialer->dialer_number));
+    dialer_draw();
+    screen_swap_fb();
+}
 void dialer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
   char dialer_key = DIALER_KEY_BACK;
   if (BUTTON_DOWN == down) {
@@ -713,7 +1401,8 @@ void dialer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) 
             return;
         } else if (DIALER_KEY_ENTER == dialer_key) {
             // enter
-            memset(dialer->dialer_number, 0, sizeof(dialer->dialer_number));
+            dialer_action(dialer->dialer_number);
+            return;
         } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
             dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
         }
@@ -733,571 +1422,6 @@ void dialer_start() {
     button_set_callback(dialer_button_press, NULL);
     dialer_draw();
     screen_swap_fb();
-}
-
-
-//-----------------------------------------------------------------------------
-// Snake
-//-----------------------------------------------------------------------------
-#define SNAKE_SQUARE_SIZE   3
-#define SNAKE_GRID_OFFSET   2
-#define SNAKE_GRID_WIDTH    ((SCREEN_WIDTH - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
-#define SNAKE_GRID_HEIGHT   ((SCREEN_HEIGHT - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
-#define SNAKE_GAME_MEM_SIZE (SNKC_CALC_DATA_SIZE(SNAKE_GRID_WIDTH,SNAKE_GRID_HEIGHT))
-static uint8_t *snkc_mem = NULL;
-static size_t snkc_mem_size = 0;
-static size_t snkc_int_handle = INT_INVALID_HANDLE;
-static uint8_t snake_direction = 0xff;
-void SNKC_API snake_draw_clear_api(void *ctx) {
-    screen_draw_clear();
-}
-void SNKC_API snake_draw_snake_api(void *ctx, int16_t x, int16_t y) {
-    x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
-    y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
-    screen_fill_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
-}
-void SNKC_API snake_draw_apple_api(void *ctx, int16_t x, int16_t y) {
-    x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
-    y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
-    screen_draw_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
-}
-int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
-    return rng_random_s16(min, max);
-}
-void snake_draw_end() {
-    screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
-    screen_swap_fb();
-}
-void VINTC_API snake_tick_api(void *ctx) {
-    if(!snkc_tick(snkc_mem)) {
-        LOG("snake tick failed");
-    }
-    snake_draw_end();
-}
-void snake_stop() {
-    interrupts_remove(snkc_int_handle);
-    snkc_int_handle = INT_INVALID_HANDLE;
-    memset(snkc_mem, 0, snkc_mem_size);
-}
-void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  int8_t new_direction = (int8_t)snake_direction;
-  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
-    if (duration > 1000) {
-        // return to menu
-        snake_stop();
-        game_menu();
-        return;
-    }
-  }
-  if (BUTTON_UP == down) {
-    return;
-  }
-  switch(key) {
-    case BUTTON_KEY_LEFT:
-      if (0xff == snake_direction) {
-        new_direction = 0;  // start going LEFT
-      } else if ((1 == snake_direction) || (3 == snake_direction)) {
-        // up or down - go left
-        new_direction = 0;  // LEFT
-      } else {
-        // left or right - go up
-        new_direction = 1;  // UP
-      }
-      break;
-    case BUTTON_KEY_RIGHT:
-      if (0xff == snake_direction) {
-        new_direction = 2;  // start going RIGHT
-      } else if ((0 == snake_direction) || (2 == snake_direction)) {
-        // left or right - go down
-        new_direction = 3;  // DOWN
-      } else {
-        // up or down - go right
-        new_direction = 2;  // RIGHT
-      }
-      break;
-    case BUTTON_KEY_OK:
-      // rotate clockwise
-      new_direction++;
-      if (new_direction > 3) {
-          new_direction = 0;
-      }
-      break;
-    default:
-      return;
-      break;
-  }
-  if (new_direction < 0) {
-    new_direction = 3;
-  }
-  if (new_direction > 3) {
-    new_direction = 0;
-  }
-  snake_direction = (uint8_t)new_direction;
-  switch(snake_direction) {
-    case 0:
-      if(!snkc_key_left(snkc_mem)) {
-          LOG("snake key left failed");
-      }
-      snake_draw_end();
-      break;
-    case 1:
-      if(!snkc_key_up(snkc_mem)) {
-          LOG("snake key up failed");
-      }
-      snake_draw_end();
-      break;
-    case 2:
-      if(!snkc_key_right(snkc_mem)) {
-          LOG("snake key right failed");
-      }
-      snake_draw_end();
-      break;
-    case 3:
-      if(!snkc_key_down(snkc_mem)) {
-          LOG("snake key down failed");
-      }
-      snake_draw_end();
-      break;
-    default:
-      break;
-  }
-}
-void snake_init(void *mem, size_t mem_size) {
-    snkc_mem = (uint8_t*)mem;
-    snkc_mem_size = mem_size;
-}
-void snake_start() {
-    snake_direction = 0xff;
-
-    // Snake game
-    if (!snkc_init(snkc_mem, snkc_mem_size))
-    {
-        LOG("snake init failed");
-    }
-    if (!snkc_set_grid(snkc_mem, SNAKE_GRID_WIDTH, SNAKE_GRID_HEIGHT))
-    {
-        LOG("snake set grid failed");
-    }
-
-     // Snake will draw on the screen
-    if (!snkc_set_draw_clear(snkc_mem, snake_draw_clear_api, &screen)) {
-        LOG("snake set draw empty failed");
-    }
-    if (!snkc_set_draw_snake(snkc_mem, snake_draw_snake_api, &screen)) {
-        LOG("snake set draw snake failed");
-    }
-    if (!snkc_set_draw_apple(snkc_mem, snake_draw_apple_api, &screen)) {
-        LOG("snake set draw apple failed");
-    }
-    if (!snkc_set_random(snkc_mem, snake_random_api, NULL)) {
-        LOG("snake set random failed");
-    }
-
-    // Snake frame rate
-    snkc_int_handle = interrupts_set(1000/15, snake_tick_api, snkc_mem);
-
-    // Snake buttons
-    button_set_callback(snake_button_press, NULL);
-
-    // Game reset
-    if (!snkc_reset(snkc_mem))
-    {
-        LOG("snake reset failed");
-    }
-}
-
-//-----------------------------------------------------------------------------
-// Tetris
-//-----------------------------------------------------------------------------
-#define TETRIS_SQUARE_SIZE    2
-#define TETRIS_GRID_OFFSET    2
-#define TETRIS_GRID_WIDTH     10
-#define TETRIS_GRID_HEIGHT    ((SCREEN_HEIGHT - (TETRIS_GRID_OFFSET * 2)) / TETRIS_SQUARE_SIZE)
-#define TETRIS_DISPLAY_WIDTH  ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_WIDTH * TETRIS_SQUARE_SIZE))
-#define TETRIS_DISPLAY_HEIGHT ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_HEIGHT * TETRIS_SQUARE_SIZE))
-#define TETRIS_DISPLAY_OFFSET ((SCREEN_WIDTH / 2) - (TETRIS_DISPLAY_WIDTH / 2))
-#define TETRIS_NEXT_PIECE_OFFSET 2
-#define TETRIS_NEXT_PIECE_SQUARE_SIZE 4
-#define TETRIS_GAME_MEM_SIZE (TTRS_CALC_DATA_SIZE(TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
-static uint8_t *ttrs_mem = NULL;
-static size_t ttrs_mem_size = 0;
-static size_t ttrs_int_handle = INT_INVALID_HANDLE;
-void TTRS_API tetris_draw_clear(void *ctx) {
-    if (!vg2d_draw_clear(&screen, SCREEN_COLOR_WHITE)) {
-        LOG("tetris draw clear failed");
-    }
-}
-void TTRS_API tetris_draw_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
-    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
-    y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
-    if (!vg2d_fill_rect(&screen, x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK)) {
-        LOG("tetris draw piece failed");
-    }
-}
-void TTRS_API tetris_draw_next_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
-    x = TETRIS_NEXT_PIECE_OFFSET + (x * TETRIS_NEXT_PIECE_SQUARE_SIZE);
-    y = TETRIS_NEXT_PIECE_OFFSET + (y * TETRIS_NEXT_PIECE_SQUARE_SIZE);
-    if (!vg2d_draw_rect(&screen, x, y, TETRIS_NEXT_PIECE_SQUARE_SIZE, TETRIS_NEXT_PIECE_SQUARE_SIZE, SCREEN_COLOR_BLACK)) {
-        LOG("tetris draw piece failed");
-    }
-}
-void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
-    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
-    y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
-    if (!vg2d_fill_rect(&screen, x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK)) {
-        LOG("tetris draw apple failed");
-    }
-}
-int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
-    return rng_random_s16(min, max);
-}
-void TTRS_API tetris_game_over(void *ctx) {
-    if (!ttrs_reset(ttrs_mem))
-    {
-        LOG("tetris reset (2) failed");
-    }
-}
-void tetris_draw_end() {
-    vg2d_draw_rect(&screen, TETRIS_DISPLAY_OFFSET, 0, TETRIS_DISPLAY_WIDTH, TETRIS_DISPLAY_HEIGHT, SCREEN_COLOR_BLACK);
-    screen_swap_fb();
-}
-void VINTC_API tetris_tick(void *ctx) {
-    screen_draw_clear();
-    if(!ttrs_tick(ttrs_mem)) {
-        LOG("tetris tick failed");
-    }
-    tetris_draw_end();
-}
-void tetris_stop() {
-    interrupts_remove(ttrs_int_handle);
-    ttrs_int_handle = INT_INVALID_HANDLE;
-    memset(ttrs_mem, 0, ttrs_mem_size);
-}
-void tetris_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        if(!ttrs_key_left(ttrs_mem)) {
-            LOG("tetris key left failed");
-        }
-        tetris_draw_end();
-        break;
-      case BUTTON_KEY_RIGHT:
-        if(!ttrs_key_right(ttrs_mem)) {
-            LOG("tetris key right failed");
-        }
-        tetris_draw_end();
-        break;
-      default:
-        break;
-    }
-  }
-  if ((BUTTON_UP == down) && (BUTTON_KEY_OK == key)) {
-    if (duration > 500) {
-        if(!ttrs_key_drop(ttrs_mem)) {
-            LOG("tetris key drop failed");
-        }
-        tetris_draw_end();
-    } else {
-        if(!ttrs_key_rotate(ttrs_mem)) {
-            LOG("tetris key rotate failed");
-        }
-        tetris_draw_end();
-    }
-  }
-  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
-    if (duration > 1000) {
-        // return to menu
-        tetris_stop();
-        game_menu();
-        return;
-    }
-  }
-}
-void tetris_init(void *mem, size_t mem_size) {
-    ttrs_mem = (uint8_t*)mem;
-    ttrs_mem_size = mem_size;
-}
-void tetris_start() {
-    // Tetris game
-    if (!ttrs_init(ttrs_mem, ttrs_mem_size))
-    {
-        LOG("tetris init failed");
-    }
-    if (!ttrs_set_grid(ttrs_mem, TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
-    {
-        LOG("tetris set grid failed");
-    }
-
-    // Tetris will draw on the screen
-    if (!ttrs_set_draw_clear(ttrs_mem, tetris_draw_clear, &screen)) {
-        LOG("tetris set draw empty failed");
-    }
-    if (!ttrs_set_draw_piece(ttrs_mem, tetris_draw_piece, &screen)) {
-        LOG("tetris set draw piece failed");
-    }
-    if (!ttrs_set_draw_next_piece(ttrs_mem, tetris_draw_next_piece, &screen)) {
-        LOG("tetris set draw next piece failed");
-    }
-    if (!ttrs_set_draw_block(ttrs_mem, tetris_draw_block, &screen)) {
-        LOG("tetris set draw block failed");
-    }
-    if (!ttrs_set_random(ttrs_mem, tetris_random, NULL)) {
-        LOG("tetris set random failed");
-    }
-    if (!ttrs_set_game_over(ttrs_mem, tetris_game_over, NULL)) {
-        LOG("tetris set game over failed");
-    }
-
-    // Tetris buttons
-    button_set_callback(tetris_button_press, NULL);
-
-    // Tetris frame rate
-    ttrs_int_handle = interrupts_set(700, tetris_tick, ttrs_mem);
-
-    // Tetris reset
-    if (!ttrs_reset(ttrs_mem))
-    {
-        LOG("tetris reset failed");
-    }
-}
-
-//-----------------------------------------------------------------------------
-// Text viewer
-//-----------------------------------------------------------------------------
-#define TEXT_VIEWER_CHARS_PER_LINE    (SCREEN_WIDTH/SCREEN_FONT_WIDTH)
-#define TEXT_VIEWER_MEM_SIZE          (VWRC_CALC_DATA_SIZE(TEXT_VIEWER_CHARS_PER_LINE))
-static uint8_t *vwrc_mem = NULL;
-static size_t vwrc_mem_size = 0;
-static size_t vwrc_data_size = 0;
-static const char *vwrc_c_str = 0;
-static off_t vwrc_csv_offset = 0;
-static ssize_t vwrc_csv_row_size = 0;
-ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
-    if (buffer_size >= vwrc_data_size) {
-        // can't read more than the amount of data we have
-        buffer_size = vwrc_data_size;
-    }
-    if (offset >= vwrc_data_size) {
-        // read out of bounds
-        return -1;
-    }
-    if ((offset + buffer_size) > vwrc_data_size) {
-        // reading the last few bytes at the end
-        buffer_size = vwrc_data_size - offset;
-    }
-    if (0 == buffer_size) {
-        // no data was requested
-        return 0;
-    }
-    memcpy(buffer, vwrc_c_str + offset, buffer_size);
-    return (ssize_t)buffer_size;
-}
-ssize_t VWRC_API viewer_read_csv_row(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
-    int fd = (int)ctx;
-    if (buffer_size >= vwrc_csv_row_size) {
-        // can't read more than the amount of data we have
-        buffer_size = vwrc_data_size;
-    }
-    if (offset >= vwrc_csv_row_size) {
-        // read out of bounds
-        LOG("OUT OF BOUNDS");
-        return -1;
-    }
-    if ((offset + buffer_size) > vwrc_csv_row_size) {
-        // reading the last few bytes at the end
-        buffer_size = vwrc_csv_row_size - offset;
-    }
-    if (0 == buffer_size) {
-        // no data was requested
-        LOG("NO DATA");
-        return 0;
-    }
-    (void) lseek(fd, vwrc_csv_offset + offset, SEEK_SET);
-    for (size_t i = 0; i < buffer_size; i++) {
-        if (1 != read(fd, &(buffer[i]), 1)) {
-            return (ssize_t)i;
-        }
-        if (buffer[i] == ',') {
-            // makes the schedule look nicer
-            if (offset < 10) {
-                // put a '-' between the times
-                buffer[i] = '-';
-            } else {
-                buffer[i] = '\n';
-            }
-        }
-    }
-    return (ssize_t)buffer_size;
-}
-void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
-    if (width) {
-        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str));
-    }
-    if (height) {
-        *height = SCREEN_FONT_HEIGHT;
-    }
-}
-void VWRC_API viewer_draw_string_api(void *ctx, size_t x, size_t y, const char *str) {
-    screen_draw_string(x, y, str, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-}
-void viewer_draw() {
-    size_t row = 0;
-    size_t row_count = 0;
-    size_t rows_per_view = 0;
-    size_t y = 0;
-    size_t h = 0;
-    screen_draw_clear();
-    if (!vwrc_draw_view(vwrc_mem)) {
-        LOG("failed to draw text viewer");
-    }
-    if (!vwrc_get_row(vwrc_mem, &row)) {
-        LOG("failed to get row");
-    }
-    if (!vwrc_get_row_count(vwrc_mem, &row_count)) {
-        LOG("failed to get row count");
-    }
-    if (!vwrc_get_rows_per_view(vwrc_mem, &rows_per_view)) {
-        LOG("failed to get rows per view");
-    }
-    if (rows_per_view < row_count) {
-      // progress bars required
-      y = (SCREEN_HEIGHT * row) / row_count;
-      h = (SCREEN_HEIGHT * rows_per_view) / row_count;
-      screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
-    }
-}
-typedef void (*ViewerFn)(void);
-void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  ViewerFn backfn = (ViewerFn)ctx;
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        if (!vwrc_scroll_up(vwrc_mem)) {
-            LOG("viewer scroll up failed");
-        }
-        viewer_draw();
-        screen_swap_fb();
-        break;
-      case BUTTON_KEY_OK:
-        backfn();
-        break;
-      case BUTTON_KEY_RIGHT:
-        if (!vwrc_scroll_down(vwrc_mem)) {
-            LOG("viewer scroll down failed");
-        }
-        viewer_draw();
-        screen_swap_fb();
-        break;
-      default:
-        break;
-    }
-  }
-}
-void viewer_init(void *mem, size_t mem_size) {
-    vwrc_mem = (uint8_t*)mem;
-    vwrc_mem_size = mem_size;
-}
-void viewer_start(void* backfn) {
-
-    // reset
-    vwrc_data_size = 0;
-    vwrc_c_str = NULL;
-
-    // init
-    if (!vwrc_init(vwrc_mem, vwrc_mem_size)) {
-        LOG("failed to init text viewer");
-    }
-
-    // view size (2 pixels for scroll bar)
-    if (!vwrc_set_view(vwrc_mem, SCREEN_WIDTH - 2, SCREEN_HEIGHT)) {
-        LOG("failed to set view in text viewer");
-    }
-
-    // how to calculate the pixel size of a string
-    if (!vwrc_set_calc_string_view(vwrc_mem, viewer_calc_string_view_api, NULL)) {
-        LOG("failed to set calc string view in text viewer");
-    }
-
-    // how to draw the text in the view
-    if (!vwrc_set_draw_string(vwrc_mem, viewer_draw_string_api, NULL)) {
-        LOG("failed to set draw string in text viewer");
-    }
-
-    // Viewer buttons
-    button_set_callback(viewer_button_press, backfn);
-}
-void viewer_c_str(const char *text, void* backfn) {
-    viewer_start(backfn);
-    vwrc_c_str = text;
-    vwrc_data_size = (size_t)strlen(text);
-    if (!vwrc_set_text(vwrc_mem, vwrc_data_size, viewer_read_c_str_api, NULL)) {
-        LOG("failed to set data for text viewer");
-    }
-    viewer_draw();
-    screen_swap_fb();
-}
-void viewer_csv_row(int fd, size_t row, void* backfn) {
-    viewer_start(backfn);
-    vwrc_csv_offset = csv_lseek(fd, row, 0);
-    if (vwrc_csv_offset < 0) {
-      LOG("Failed to seek to CSV row");
-    }
-    vwrc_csv_row_size = csv_row_size(fd, row);
-    if (0 == vwrc_csv_row_size) {
-      LOG("CSV row empty");
-    }
-    if (!vwrc_set_text(vwrc_mem, vwrc_csv_row_size, viewer_read_csv_row, (void*)fd)) {
-        LOG("failed to set CSV for text viewer");
-    }
-    viewer_draw();
-    screen_swap_fb();
-}
-
-//-----------------------------------------------------------------------------
-// QR Code
-//-----------------------------------------------------------------------------
-#define qrcodegen_MAX_VERSION   6
-#define QR_MEM_QR_CODE_SIZE     (qrcodegen_BUFFER_LEN_FOR_VERSION(qrcodegen_MAX_VERSION))
-#define QR_MEM_TEMP_SIZE        (qrcodegen_BUFFER_LEN_FOR_VERSION(qrcodegen_MAX_VERSION))
-#define QR_MEM_SIZE             (QR_MEM_QR_CODE_SIZE) // + QR_MEM_TEMP_SIZE)
-static uint8_t *qrcode_mem = NULL;
-static uint8_t *qrcode_temp_mem = NULL;
-void qrcode_init(void *mem, size_t mem_size) {
-  if (mem_size < QR_MEM_SIZE) {
-    return;
-  }
-  qrcode_mem = (uint8_t*)mem;
-  qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
-}
-void qrcode_draw(void *text) {
-  bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, qrcodegen_Ecc_LOW,
-    qrcodegen_MAX_VERSION, qrcodegen_MAX_VERSION, qrcodegen_Mask_0, true);
-  if (!ok) {
-    LOG("Failed to render QR code");
-    return;
-  }
-  int size = qrcodegen_getSize(qrcode_mem);
-  int x_offset = (SCREEN_WIDTH / 2) - (size / 2);
-  int y_offset = (SCREEN_HEIGHT / 2) - (size / 2);
-  screen_draw_clear();
-  for (int y = 0; y < size; y++) {
-    for (int x = 0; x < size; x++) {
-      nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
-    }
-  }
-}
-typedef void (*QRCodeFn)(void);
-void qrcode_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-    QRCodeFn backfn = (QRCodeFn)ctx;
-    if (BUTTON_KEY_LEFT == key) {
-        backfn();
-    }
-}
-void qrcode_display(void *text, void* backfn) {
-    qrcode_draw(text);
-    screen_swap_fb();
-    button_set_callback(qrcode_button_press, (void*)backfn);
 }
 
 //-----------------------------------------------------------------------------
@@ -1355,16 +1479,16 @@ void menu_draw() {
     dash_power_draw();
     dash_signal_draw();
     if (!tmnu_draw_view(tmnu_mem)) {
-        LOG("failed to draw menu");
+        LOG_ERR(10,0);
     }
     if (!tmnu_get_item(tmnu_mem, &item)) {
-        LOG("failed to get item");
+        LOG_ERR(10,1);
     }
     if (!tmnu_get_item_count(tmnu_mem, &item_count)) {
-        LOG("failed to get item count");
+        LOG_ERR(10,2);
     }
     if (!tmnu_get_items_per_view(tmnu_mem, &items_per_view)) {
-        LOG("failed to get items per view");
+        LOG_ERR(10,3);
     }
     if (items_per_view < item_count) {
       // progress bars required
@@ -1379,19 +1503,19 @@ void menu_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
     switch(key) {
       case BUTTON_KEY_LEFT:
         if (!tmnu_key_up(tmnu_mem)) {
-            LOG("menu scroll up failed");
+            LOG_ERR(10,4);
         }
         menu_draw();
         break;
       case BUTTON_KEY_RIGHT:
         if (!tmnu_key_down(tmnu_mem)) {
-            LOG("menu scroll down failed");
+            LOG_ERR(10,5);
         }
         menu_draw();
         break;
       case BUTTON_KEY_OK:
         if (!tmnu_key_enter(tmnu_mem)) {
-            LOG("menu select item failed");
+            LOG_ERR(10,6);
         }
         break;
       default:
@@ -1409,22 +1533,22 @@ void menu_init(void *mem, size_t mem_size) {
 void menu_start() {
     // init
     if (!tmnu_init(tmnu_mem, tmnu_mem_size)) {
-        LOG("failed to init menu");
+        LOG_ERR(10,7);
     }
 
     // view size (2 pixels for scroll bar)
     if (!tmnu_set_view(tmnu_mem, MENU_VIEW_WIDTH - 2, MENU_VIEW_HEIGHT)) {
-        LOG("failed to set view in text viewer");
+        LOG_ERR(10,8);
     }
 
     // how to calculate the pixel size of a string
     if (!tmnu_set_calc_string_view(tmnu_mem, menu_calc_string_view_api, NULL)) {
-        LOG("failed to set calc string view in text viewer");
+        LOG_ERR(10,9);
     }
 
     // how to draw the text in the view
     if (!tmnu_set_draw_string(tmnu_mem, menu_draw_string_api, NULL)) {
-        LOG("failed to set draw string in text viewer");
+        LOG_ERR(10,10);
     }
 
     // interrupt to update the display (for signal/power changes)
@@ -1440,10 +1564,10 @@ void menu_stop() {
 }
 void menu_set(size_t item_count, TmnuMenuItemStringFn items, TmnuMenuItemOnSelectFn action, void *ctx) {
     if (!tmnu_set_menu_item_string(tmnu_mem, item_count, items, ctx)) {
-        LOG("failed to set main menu items");
+        LOG_ERR(10,11);
     }
     if (!tmnu_set_on_select(tmnu_mem, action, ctx)) {
-        LOG("failed to set main menu actions");
+        LOG_ERR(10,12);
     }
 }
 #define MENU_ITEM(name,buffer,size) (memcpy_P(buffer,F(name),(sizeof(name)-1) > size ? size : (sizeof(name)-1)))
@@ -1675,29 +1799,11 @@ void setup() {
     screen_swap_fb();
     delay(1000);
 
-    // SNAKE
-    //snake_init(app_mem, app_mem_size);
-
-    // TETRIS
-    //tetris_init(app_mem, app_mem_size);
-
-    // TEXT VIEWER
-    //viewer_init(app_mem, app_mem_size);
-    //viewer_c_str("Deep into that darkness peering, long I stood there, wondering, fearing, doubting\n\n - Edgar Allan Poe\n\nRead more at: https://www.brainyquote.com/quotes/edgar_allan_poe_393723");
-    //viewer_draw();
-    //screen_swap_fb();
-
     // MENU
     main_menu();
-
-    // DIALER
-    //dialer_init();
-    //dialer_draw();
-    //screen_swap_fb();
 }
 
 void loop() {
-    // Virtual interrupt handling
     interrupts_tick();
 }
 

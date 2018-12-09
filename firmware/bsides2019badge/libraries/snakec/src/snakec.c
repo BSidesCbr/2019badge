@@ -257,6 +257,7 @@ static void SNKC_API snkc_draw_trail_and_check(void *ctx, int16_t x, int16_t y) 
     // check if the snake has colided with itself
     if ((x == snake->px) && (y == snake->py)) {
         snake->tail = 5;
+        // score will be reset by tick function
     }
 }
 
@@ -283,6 +284,7 @@ SNKC_BOOL snkc_init(void *data, size_t size) {
     size -= sizeof(SNKC_DATA);
     ((SNKC_DATA*)data)->trail_array_size = size + 1;
     ((SNKC_DATA*)data)->tail = 5;
+    ((SNKC_DATA*)data)->score = 0;
     return SNKC_TRUE;
 }
 
@@ -346,6 +348,16 @@ SNKC_BOOL snkc_set_random(void *data, SnkCRandomFn func, void *ctx) {
     return SNKC_TRUE;
 }
 
+SNKC_BOOL snkc_set_game_over(void *data, SnkCGameOverFn func, void *ctx) {
+    SNKC_DATA *snake = (SNKC_DATA *)data;
+    if (NULL == snake) {
+        return SNKC_FALSE;
+    }
+    snake->game_over = func;
+    snake->game_over_ctx = ctx;
+    return SNKC_TRUE;
+}
+
 SNKC_BOOL snkc_reset(void *data) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
     SNKC_BOOL status = SNKC_TRUE;
@@ -357,6 +369,7 @@ SNKC_BOOL snkc_reset(void *data) {
     snake->px = snake->w / 2;
     snake->py = snake->h / 2;
     snake->tail = 5;
+    snake->score = 0;
     if (SNKC_TRUE == status) {
         status = snkc_trail_clear(data);
     }
@@ -371,6 +384,7 @@ SNKC_BOOL snkc_tick(void *data) {
     SNKC_BOOL status = SNKC_TRUE;
     int16_t x = 0;
     int16_t y = 0;
+    uint16_t score = 0;
     if (NULL == snake) {
         return SNKC_FALSE;
     }
@@ -408,6 +422,7 @@ SNKC_BOOL snkc_tick(void *data) {
     if (SNKC_TRUE == status) {
         if ((snake->ax == snake->px) && (snake->ay == snake->py)) {
             snake->tail++;
+            snake->score++;
             status = snkc_place_apple(data);
         }
     }
@@ -416,6 +431,13 @@ SNKC_BOOL snkc_tick(void *data) {
             snake->draw_apple(snake->draw_apple_ctx, snake->ax, snake->ay);
         } else {
             status = SNKC_FALSE;
+        }
+    }
+    if ((SNKC_TRUE == status) && (snake->tail <= 5) && (snake->score > 0)) {
+        score = snake->score;
+        snake->score = 0;
+        if (snake->game_over) {
+            snake->game_over(snake->game_over_ctx, score);
         }
     }
     return status;

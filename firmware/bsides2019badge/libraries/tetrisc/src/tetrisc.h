@@ -55,7 +55,7 @@ typedef void(TTRS_API *TTrsDrawClearFn)(void *);
 typedef void(TTRS_API *TTrsDrawPieceFn)(void *,int16_t,int16_t,TTRS_PIECE_TYPE);
 typedef void(TTRS_API *TTrsDrawBlockFn)(void *,int16_t,int16_t);
 typedef int16_t(TTRS_API *TTrsRandomFn)(void *,int16_t,int16_t);
-typedef void(TTRS_API *TTrsGameOverFn)(void *);
+typedef void(TTRS_API *TTrsGameOverFn)(void *, uint16_t);
 
 typedef struct _TTRS_DATA {
     void *draw_clear_ctx;
@@ -70,6 +70,7 @@ typedef struct _TTRS_DATA {
     TTrsRandomFn random;
     void *game_over_ctx;
     TTrsGameOverFn game_over;
+    uint16_t score;
     int16_t pos_x, pos_y;           // Position of the piece that is falling down
     TTRS_PIECE_TYPE piece;          // Kind of the piece that is falling down
     uint8_t rotation;               // Rotation of the piece that is falling down

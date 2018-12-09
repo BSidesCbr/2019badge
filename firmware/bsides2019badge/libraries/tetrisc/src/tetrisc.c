@@ -488,8 +488,9 @@ static void ttrs_board_delete_line(void *data, int16_t y)
     }
 }
 
-static void ttrs_board_delete_possible_lines(void *data)
+static uint16_t ttrs_board_delete_possible_lines(void *data)
 {
+    uint16_t removed_lines = 0;
     for (int16_t j = 0; j < TTRS_BOARD_HEIGHT_GET(data); j++)
     {
         int16_t i = 0;
@@ -502,7 +503,24 @@ static void ttrs_board_delete_possible_lines(void *data)
         }
         if (i == TTRS_BOARD_WIDTH_GET(data)) {
             ttrs_board_delete_line(data, j);
+            removed_lines++;
         }
+    }
+    switch(removed_lines) {
+        case 1:
+            ((TTRS_DATA *)data)->score++;
+            break;
+        case 2:
+            ((TTRS_DATA *)data)->score += 4;
+            break;
+        case 3:
+            ((TTRS_DATA *)data)->score += 8;
+            break;
+        case 4:
+            ((TTRS_DATA *)data)->score += 16;
+            break;
+        default:
+            break;
     }
 }
 
@@ -648,6 +666,9 @@ TTRS_BOOL ttrs_reset(void *data) {
         return TTRS_FALSE;
     }
 
+    // no score
+    tetris->score = 0;
+
     // First piece
     tetris->piece          = (TTRS_PIECE_TYPE)(ttrs_random(data, 0, TTRS_PIECE_KIND_COUNT - 1));
     tetris->rotation       = (uint8_t)(ttrs_random(data, 0, TTRS_ROTATION_COUNT - 1));
@@ -783,6 +804,7 @@ TTRS_BOOL ttrs_key_down(void *data) {
 }
 
 TTRS_BOOL ttrs_key_drop(void *data) {
+    uint16_t score = 0;
     TTRS_DATA *tetris = (TTRS_DATA *)data;
     if (NULL == tetris) {
         return TTRS_FALSE;
@@ -801,8 +823,10 @@ TTRS_BOOL ttrs_key_drop(void *data) {
     if (TTRS_TRUE == ttrs_board_is_game_over(data))
     {
         ttrs_draw_scene(data);
+        score = tetris->score;
+        (void)ttrs_reset(data);
         if (tetris->game_over) {
-            tetris->game_over(tetris->game_over_ctx);
+            tetris->game_over(tetris->game_over_ctx, score);
         }
         return TTRS_TRUE;
     }
@@ -829,6 +853,7 @@ TTRS_BOOL ttrs_key_rotate(void *data) {
 }
 
 TTRS_BOOL ttrs_tick(void *data) {
+    uint16_t score = 0;
     TTRS_DATA *tetris = (TTRS_DATA *)data;
     if (NULL == tetris) {
         return TTRS_FALSE;
@@ -850,8 +875,10 @@ TTRS_BOOL ttrs_tick(void *data) {
         if (TTRS_TRUE == ttrs_board_is_game_over(data))
         {
             ttrs_draw_scene(data);
+            score = tetris->score;
+            (void)ttrs_reset(data);
             if (tetris->game_over) {
-                tetris->game_over(tetris->game_over_ctx);
+                tetris->game_over(tetris->game_over_ctx, score);
             }
             return TTRS_TRUE;
         }
