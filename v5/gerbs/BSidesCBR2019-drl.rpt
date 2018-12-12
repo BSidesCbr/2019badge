@@ -1,0 +1,25 @@
+Drill report for /home/ec0/Boards/BSidesCBR2019/BSidesCBR2019.kicad_pcb
+Created on Sun 02 Sep 2018 09:00:30 AEST
+
+Copper Layer Stackup:
+    =============================================================
+    L1 :  F.Cu                      front
+    L2 :  B.Cu                      back
+
+
+Drill file 'BSidesCBR2019.drl' contains
+    plated through holes:
+    =============================================================
+    T1  0.40mm  0.016"  (35 holes)
+    T2  1.00mm  0.039"  (10 holes)
+    T3  2.00mm  0.079"  (2 holes)
+
+    Total plated holes count 47
+
+
+Drill file 'BSidesCBR2019-NPTH.drl' contains
+    unplated through holes:
+    =============================================================
+    T1  1.50mm  0.059"  (20 holes)
+
+    Total unplated holes count 20

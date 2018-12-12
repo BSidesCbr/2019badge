@@ -1,0 +1,17 @@
+### Module positions - created on Wed 12 Dec 2018 14:57:23 AEDT ###
+### Printed by Pcbnew version kicad 5.0.1+dfsg1-3
+## Unit = mm, Angle = deg.
+## Side : bottom
+# Ref     Val            Package                                               PosX       PosY       Rot  Side
+C1        _100n          C_0805_HandSoldering                              -46.6800   -84.5300  270.0000  bottom
+POWER     SW_SPST        SW_SPDT_PCM12                                     -69.8500   -50.8000    0.0000  bottom
+R1        _1M            R_0805_HandSoldering                              -52.3700   -96.9100   90.0000  bottom
+R2        LR             R_0805_HandSoldering                              -44.0200   -84.5400   90.0000  bottom
+R3        LR             R_0805_HandSoldering                              -74.0200   -90.2400  270.0000  bottom
+R4        _10K           R_0805_HandSoldering                              -42.7600  -101.7700   90.0000  bottom
+R5        LR             R_0805_HandSoldering                              -74.0300   -84.5700   90.0000  bottom
+R6        LR             R_0805_HandSoldering                              -44.0400   -90.2300  270.0000  bottom
+SW1       RESET          SW_SPST_B3SL-1002P                                -46.8678  -142.2466    0.0000  bottom
+U1        ATMEGA328P-AU  QFP80P900X900X120-32N                             -51.0300  -105.9000  270.0000  bottom
+Y1        16Mhz          Crystal_SMD_TXC_7M-4pin_3.2x2.5mm_HandSoldering   -47.4800   -96.8900  180.0000  bottom
+## End
