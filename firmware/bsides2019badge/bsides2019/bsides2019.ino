@@ -49,7 +49,6 @@ void log_err_imp(uint16_t item_encoded) {
 void serial_init() {
     Serial.begin(115200);
     while (!Serial);
-    LOG("NOPIA 1337");
 }
 
 //-----------------------------------------------------------------------------
@@ -88,9 +87,8 @@ ssize_t CSVC_API csv_read_api(void *ctx, size_t offset, char *buffer, size_t buf
   }
   return read(fd, buffer, buffer_size);
 }
-size_t csv_row_count(int fd)
+size_t csv_file_size(int fd)
 {
-  size_t rows = 0;
   size_t size = 0;
   off_t offset = lseek(fd, 0, SEEK_END);
   if (offset < 0) {
@@ -103,57 +101,26 @@ size_t csv_row_count(int fd)
     LOG_ERR(2,3);
     return 0;
   }
-  if (!csvc_dimensions(size, csv_read_api, (void *)fd, &rows, NULL)) {
+  return size;
+}
+size_t csv_row_count(int fd)
+{
+  size_t rows = 0;
+  if (!csvc_dimensions(csv_file_size(fd), csv_read_api, (void *)fd, &rows, NULL)) {
     LOG_ERR(2,4);
     return 0;
   }
   return rows;
 }
 void csv_for_each_cell(int fd, CsvcCellFn cell_fn, void *cell_ctx, char *buffer, size_t buffer_size) {
-  size_t size = 0;
-  off_t offset = lseek(fd, 0, SEEK_END);
-  if (offset < 0) {
-    LOG_ERR(2,5);
-    return;
-  }
-  size = (size_t)offset;
-  offset = lseek(fd, 0, SEEK_SET);
-  if (offset != 0) {
-    LOG_ERR(2,6);
-    return;
-  }
-  if (!csvc_for_each_cell(size, csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
+  if (!csvc_for_each_cell(csv_file_size(fd), csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
     LOG_ERR(2,7);
     return;
   }
 }
-typedef struct {
-    size_t row;
-    size_t column;
-} cell_select_t;
-CSVC_BOOL CSVC_API csv_find_cell_api(void *ctx, size_t row, size_t column, const char *text) {
-    cell_select_t *cell = (cell_select_t*)ctx;
-    if ((cell->row == row) && (cell->column == column)) {
-      // stop, I found it
-      return CSVC_FALSE;
-    }
-    return CSVC_TRUE;
-}
 void csv_read(int fd, size_t row, size_t column, char *buffer, size_t buffer_size) {
-  size_t size = 0;
-  off_t offset = lseek(fd, 0, SEEK_END);
-  if (offset < 0) {
-    LOG_ERR(2,8);
-    return;
-  }
-  size = (size_t)offset;
-  offset = lseek(fd, 0, SEEK_SET);
-  if (offset != 0) {
-    LOG_ERR(2,9);
-    return;
-  }
   buffer[0] = '\0';
-  if (!csvc_read_cell(size, csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
+  if (!csvc_read_cell(csv_file_size(fd), csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
     LOG_ERR(2,10);
   }
 }
@@ -252,74 +219,57 @@ void interrupts_remove(size_t handle) {
 //-----------------------------------------------------------------------------
 // Buttons
 //-----------------------------------------------------------------------------
-#define BUTTON_KEY_LEFT     0
-#define BUTTON_KEY_OK       1
-#define BUTTON_KEY_RIGHT    2
-#define BUTTON_DOWN         true
-#define BUTTON_UP           false
-static uint8_t button_bits;
-typedef void (*ButtonPressFn)(void *ctx, uint32_t key, bool down, uint32_t duration);
+//typedef uint8_t button_key_t;
+#define button_key_t uint8_t
+#define BUTTON_KEY_LEFT     ((button_key_t)0)
+#define BUTTON_KEY_OK       ((button_key_t)1)
+#define BUTTON_KEY_RIGHT    ((button_key_t)2)
+#define BUTTON_KEY_COUNT    (3)
+//typedef uint8_t button_state_t;
+#define button_state_t uint8_t
+#define BUTTON_STATE_UP       ((button_state_t)0)
+#define BUTTON_STATE_DOWN     ((button_state_t)1)
+#define BUTTON_STATE_HOLD     ((button_state_t)2)
+typedef void (*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 static ButtonPressFn button_cb = NULL;
 static void *button_ctx = NULL;
-uint32_t button_left_duration = 0;
-uint32_t button_ok_duration = 0;
-uint32_t button_right_duration = 0;
-void button_read_digital_inputs(void *ctx) {
-    int val = 0;
-    val = digitalRead(BUTTON_LEFT);
-    if (val == HIGH) {
-      if (0 == (button_bits & 0x1)) {
-        if (NULL != button_cb) {
-          button_left_duration = ((uint32_t)millis()) - button_left_duration;
-          button_cb(button_ctx, BUTTON_KEY_LEFT, BUTTON_UP, button_left_duration);
+static button_key_t button_state[BUTTON_KEY_COUNT];
+static uint32_t button_timestamp[BUTTON_KEY_COUNT];
+void button_check(int pin, button_key_t key) {
+    int val = digitalRead(pin);
+    int mask = 1 << key;
+    if ((val == LOW) && (BUTTON_STATE_UP == button_state[key])) {
+        // DOWN
+        button_state[key] = BUTTON_STATE_DOWN;
+        button_timestamp[key] = (uint32_t)millis();
+        if (button_cb) {
+            button_cb(button_ctx, key, BUTTON_STATE_DOWN);
         }
-      }
-      button_bits |= 0x1;
-    } else {
-      if (0 != (button_bits & 0x1)) {
-        if (NULL != button_cb) {
-          button_left_duration = (uint32_t)millis();
-          button_cb(button_ctx, BUTTON_KEY_LEFT, BUTTON_DOWN, 0);
-        }
-      }
-      button_bits &=~ 0x1;
+        return;
     }
-    val = digitalRead(BUTTON_OK);
-    if (val == HIGH) {
-      if (0 == (button_bits & 0x2)) {
+    if ((val == HIGH) && (BUTTON_STATE_UP != button_state[key])) {
+        // UP
+        button_state[key] = BUTTON_STATE_UP;
         if (NULL != button_cb) {
-          button_ok_duration = ((uint32_t)millis()) - button_ok_duration;
-          button_cb(button_ctx, BUTTON_KEY_OK, BUTTON_UP, button_ok_duration);
+            button_cb(button_ctx, key, BUTTON_STATE_UP);
         }
-      }
-      button_bits |= 0x2;
-    } else {
-      if (0 != (button_bits & 0x2)) {
-        if (NULL != button_cb) {
-          button_ok_duration = (uint32_t)millis();
-          button_cb(button_ctx, BUTTON_KEY_OK, BUTTON_DOWN, 0);
-        }
-      }
-      button_bits &=~ 0x2;
+        return;
     }
-    val = digitalRead(BUTTON_RIGHT);
-    if (val == HIGH) {
-      if (0 == (button_bits & 0x4)) {
-        if (NULL != button_cb) {
-          button_right_duration = ((uint32_t)millis()) - button_right_duration;
-          button_cb(button_ctx, BUTTON_KEY_RIGHT, BUTTON_UP, button_right_duration);
+    if (BUTTON_STATE_DOWN == button_state[key]) {
+        // HOLD
+        if (((uint32_t)millis() - button_timestamp[key]) > 1000) {
+            button_state[key] = BUTTON_STATE_HOLD;
+            if (button_cb) {
+                button_cb(button_ctx, key, BUTTON_STATE_HOLD);
+            }
+            return;
         }
-      }
-      button_bits |= 0x4;
-    } else {
-      if (0 != (button_bits & 0x4)) {
-        if (NULL != button_cb) {
-          button_right_duration = (uint32_t)millis();
-          button_cb(button_ctx, BUTTON_KEY_RIGHT, BUTTON_DOWN, 0);
-        }
-      }
-      button_bits &=~ 0x4;
     }
+}
+void button_check_interrupt(void *ctx) {
+    button_check(BUTTON_LEFT, BUTTON_KEY_LEFT);
+    button_check(BUTTON_OK, BUTTON_KEY_OK);
+    button_check(BUTTON_RIGHT, BUTTON_KEY_RIGHT);
 }
 void button_set_callback(void *func, void *ctx) {
     button_cb = func;
@@ -330,8 +280,12 @@ void button_init() {
     pinMode(BUTTON_OK, INPUT);
     pinMode(BUTTON_RIGHT, INPUT);
 
+    // clear state
+    memset(button_state, 0, sizeof(button_state));
+    memset(button_timestamp, 0, sizeof(button_timestamp));
+
     // check button interrupt
-    (void)interrupts_set(1, button_read_digital_inputs, NULL);
+    (void)interrupts_set(1, button_check_interrupt, NULL);
 }
 
 //-----------------------------------------------------------------------------
@@ -634,9 +588,9 @@ void qrcode_draw(void *text) {
   }
 }
 typedef void (*QRCodeFn)(void);
-void qrcode_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+void qrcode_button_press(void *ctx, button_key_t key, button_state_t state) {
     QRCodeFn backfn = (QRCodeFn)ctx;
-    if (BUTTON_KEY_LEFT == key) {
+    if (BUTTON_STATE_DOWN == state) {
         backfn();
     }
 }
@@ -759,17 +713,15 @@ void snake_stop() {
     snkc_int_handle = INT_INVALID_HANDLE;
     memset(snkc_mem, 0, snkc_mem_size);
 }
-void snake_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+void snake_button_press(void *ctx, button_key_t key, button_state_t state) {
   int8_t new_direction = (int8_t)snake_direction;
-  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
-    if (duration > 1000) {
+  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
         // return to menu
         snake_stop();
         game_menu();
         return;
-    }
   }
-  if (BUTTON_UP == down) {
+  if (BUTTON_STATE_DOWN != state) {
     return;
   }
   switch(key) {
@@ -953,45 +905,40 @@ void tetris_stop() {
     ttrs_int_handle = INT_INVALID_HANDLE;
     memset(ttrs_mem, 0, ttrs_mem_size);
 }
-void tetris_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        if(!ttrs_key_left(ttrs_mem)) {
-            LOG_ERR(8,1);
-        }
-        tetris_draw_end();
-        break;
-      case BUTTON_KEY_RIGHT:
-        if(!ttrs_key_right(ttrs_mem)) {
-            LOG_ERR(8,2);
-        }
-        tetris_draw_end();
-        break;
-      default:
-        break;
-    }
+void tetris_button_press(void *ctx, button_key_t key, button_state_t state) {
+  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+      // return to menu
+      tetris_stop();
+      game_menu();
+      return;
   }
-  if ((BUTTON_UP == down) && (BUTTON_KEY_OK == key)) {
-    if (duration > 500) {
-        if(!ttrs_key_drop(ttrs_mem)) {
-            LOG_ERR(8,3);
-        }
-        tetris_draw_end();
-    } else {
-        if(!ttrs_key_rotate(ttrs_mem)) {
-            LOG_ERR(8,4);
-        }
-        tetris_draw_end();
-    }
+  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_DOWN == state)) {
+      if(!ttrs_key_left(ttrs_mem)) {
+          LOG_ERR(8,1);
+      }
+      tetris_draw_end();
+      return;
   }
-  if ((BUTTON_UP == down) && ((BUTTON_KEY_LEFT == key) || (BUTTON_KEY_RIGHT == key))) {
-    if (duration > 1000) {
-        // return to menu
-        tetris_stop();
-        game_menu();
-        return;
-    }
+  if ((BUTTON_KEY_RIGHT == key) && (BUTTON_STATE_DOWN == state)) {
+      if(!ttrs_key_right(ttrs_mem)) {
+          LOG_ERR(8,2);
+      }
+      tetris_draw_end();
+      return;
+  }
+  if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_UP == state)) {
+      if(!ttrs_key_rotate(ttrs_mem)) {
+          LOG_ERR(8,4);
+      }
+      tetris_draw_end();
+      return;
+  }
+  if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_HOLD == state)) {
+      if(!ttrs_key_drop(ttrs_mem)) {
+          LOG_ERR(8,3);
+      }
+      tetris_draw_end();
+      return;
   }
 }
 void tetris_init(void *mem, size_t mem_size) {
@@ -1153,30 +1100,35 @@ void viewer_draw() {
     }
 }
 typedef void (*ViewerFn)(void);
-void viewer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
   ViewerFn backfn = (ViewerFn)ctx;
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        if (!vwrc_scroll_up(vwrc_mem)) {
-            LOG_ERR(9,4);
-        }
-        viewer_draw();
-        screen_swap_fb();
-        break;
-      case BUTTON_KEY_OK:
-        backfn();
-        break;
-      case BUTTON_KEY_RIGHT:
-        if (!vwrc_scroll_down(vwrc_mem)) {
-            LOG_ERR(9,5);
-        }
-        viewer_draw();
-        screen_swap_fb();
-        break;
-      default:
-        break;
-    }
+  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+      backfn();
+      return;
+  }
+  if (BUTTON_STATE_DOWN != state) {
+    return;
+  }
+  switch(key) {
+    case BUTTON_KEY_LEFT:
+      if (!vwrc_scroll_up(vwrc_mem)) {
+          LOG_ERR(9,4);
+      }
+      viewer_draw();
+      screen_swap_fb();
+      break;
+    case BUTTON_KEY_OK:
+      backfn();
+      break;
+    case BUTTON_KEY_RIGHT:
+      if (!vwrc_scroll_down(vwrc_mem)) {
+          LOG_ERR(9,5);
+      }
+      viewer_draw();
+      screen_swap_fb();
+      break;
+    default:
+      break;
   }
 }
 void viewer_init(void *mem, size_t mem_size) {
@@ -1373,45 +1325,51 @@ void dialer_action(const char *number) {
     dialer_draw();
     screen_swap_fb();
 }
-void dialer_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
+void dialer_button_press(void *ctx, button_key_t key, button_state_t state) {
   char dialer_key = DIALER_KEY_BACK;
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        dialer->dialer_y++;
-        if (dialer->dialer_y >= 4) {
-          dialer->dialer_y = 0;
-        }
-        dialer_draw();
-        screen_swap_fb();
-        break;
-      case BUTTON_KEY_RIGHT:
-        dialer->dialer_x++;
-        if (dialer->dialer_x >= 5) {
-          dialer->dialer_x = 0;
-        }
-        dialer_draw();
-        screen_swap_fb();
-        break;
-      case BUTTON_KEY_OK:
-        dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
-        if (DIALER_KEY_BACK == dialer_key) {
-            dialer_stop();
-            main_menu();
-            return;
-        } else if (DIALER_KEY_ENTER == dialer_key) {
-            // enter
-            dialer_action(dialer->dialer_number);
-            return;
-        } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
-            dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
-        }
-        dialer_draw();
-        screen_swap_fb();
-        break;
-      default:
-        break;
-    }
+  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+      dialer_stop();
+      main_menu();
+      return;
+  }
+  if (BUTTON_STATE_DOWN != state) {
+      return;
+  }
+  switch(key) {
+    case BUTTON_KEY_LEFT:
+      dialer->dialer_y++;
+      if (dialer->dialer_y >= 4) {
+        dialer->dialer_y = 0;
+      }
+      dialer_draw();
+      screen_swap_fb();
+      break;
+    case BUTTON_KEY_RIGHT:
+      dialer->dialer_x++;
+      if (dialer->dialer_x >= 5) {
+        dialer->dialer_x = 0;
+      }
+      dialer_draw();
+      screen_swap_fb();
+      break;
+    case BUTTON_KEY_OK:
+      dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
+      if (DIALER_KEY_BACK == dialer_key) {
+          dialer_stop();
+          main_menu();
+          return;
+      } else if (DIALER_KEY_ENTER == dialer_key) {
+          // enter
+          dialer_action(dialer->dialer_number);
+          return;
+      } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
+          dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
+      }
+      dialer_draw();
+      screen_swap_fb();
+      break;
+    default:
+      break;
   }
 }
 void dialer_init(void *mem, size_t mem_size) {
@@ -1498,29 +1456,30 @@ void menu_draw() {
     }
     screen_swap_fb();
 }
-void menu_button_press(void *ctx, uint32_t key, bool down, uint32_t duration) {
-  if (BUTTON_DOWN == down) {
-    switch(key) {
-      case BUTTON_KEY_LEFT:
-        if (!tmnu_key_up(tmnu_mem)) {
-            LOG_ERR(10,4);
-        }
-        menu_draw();
-        break;
-      case BUTTON_KEY_RIGHT:
-        if (!tmnu_key_down(tmnu_mem)) {
-            LOG_ERR(10,5);
-        }
-        menu_draw();
-        break;
-      case BUTTON_KEY_OK:
-        if (!tmnu_key_enter(tmnu_mem)) {
-            LOG_ERR(10,6);
-        }
-        break;
-      default:
-        break;
-    }
+void menu_button_press(void *ctx, button_key_t key, button_state_t state) {
+  if (BUTTON_STATE_DOWN != state) {
+      return;
+  }
+  switch(key) {
+    case BUTTON_KEY_LEFT:
+      if (!tmnu_key_up(tmnu_mem)) {
+          LOG_ERR(10,4);
+      }
+      menu_draw();
+      break;
+    case BUTTON_KEY_RIGHT:
+      if (!tmnu_key_down(tmnu_mem)) {
+          LOG_ERR(10,5);
+      }
+      menu_draw();
+      break;
+    case BUTTON_KEY_OK:
+      if (!tmnu_key_enter(tmnu_mem)) {
+          LOG_ERR(10,6);
+      }
+      break;
+    default:
+      break;
   }
 }
 void VINTC_API menu_update(void *ctx) {
@@ -1607,6 +1566,7 @@ void schedule_menu_hash(uint32_t hash) {
     menu_start();
     menu_set_title(F("Schedule"));
     menu_set(items + 1, schedule_menu_items, schedule_menu_action, NULL);
+    menu_draw();
 }
 #define schedule_menu(pathname)   schedule_menu_hash(VFSC_HASH(pathname))
 
@@ -1647,6 +1607,7 @@ void link_menu() {
     menu_start();
     menu_set_title(F("Links"));
     menu_set(items + 1, link_menu_items, link_menu_action, NULL);
+    menu_draw();
 }
 
 //-----------------------------------------------------------------------------
@@ -1686,6 +1647,7 @@ void game_menu() {
     menu_start();
     menu_set_title(F("Games"));
     menu_set(GAME_MENU_COUNT, game_menu_items, game_menu_action, NULL);
+    menu_draw();
 }
 
 //-----------------------------------------------------------------------------
@@ -1744,6 +1706,7 @@ void main_menu() {
     menu_start();
     menu_set_title(F("NOPIA 1337"));
     menu_set(MAIN_MENU_COUNT, main_menu_items, main_menu_action, NULL);
+    menu_draw();
 }
 
 //-----------------------------------------------------------------------------
@@ -1778,6 +1741,8 @@ void setup() {
     qrcode_init(app_mem, app_mem_size);
     viewer_init(app_mem, app_mem_size);
     menu_init(app_mem, app_mem_size);
+
+    LOG("NOPIA 1337");
 
     // IMAGE: BSIDESCBR
     screen_draw_raw("/img/bsidescbr.raw");
