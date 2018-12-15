@@ -1,4 +1,4 @@
-## Footprint report - date Wed 12 Dec 2018 14:57:42 AEDT
+## Footprint report - date Sat 15 Dec 2018 17:15:11 AEDT
 ## Created by Pcbnew version kicad 5.0.1+dfsg1-3
 ## Unit = mm, Angle = deg.
 
@@ -858,8 +858,8 @@ shape_offset  0.000000  0.000000
 $EndPAD
 $EndMODULE  R6
 
-$MODULE "POWER"
-reference "POWER"
+$MODULE "SW2"
+reference "SW2"
 value "SW_SPST"
 footprint "Buttons_Switches_SMD:SW_SPDT_PCM12"
 attribut smd
@@ -919,7 +919,7 @@ position -3.650000  0.780000  size  1.000000  0.800000  orientation 0.00
 drill  0.000000
 shape_offset  0.000000  0.000000
 $EndPAD
-$EndMODULE  POWER
+$EndMODULE  SW2
 
 $MODULE "J3"
 reference "J3"

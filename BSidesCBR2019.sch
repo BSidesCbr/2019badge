@@ -15,7 +15,7 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L BSidesCBR2019-rescue:ATMEGA328P-AU U1
+L BSidesCBR2019-rescue:ATMEGA328P-AU-BSidesCBR2019-rescue U1
 U 1 1 5B1519FE
 P 3100 2500
 F 0 "U1" H 2350 3750 50  0000 L BNN
@@ -26,7 +26,7 @@ F 3 "" H 3100 2500 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:Crystal_GND24 Y1
+L BSidesCBR2019-rescue:Crystal_GND24-BSidesCBR2019-rescue Y1
 U 1 1 5B1596CA
 P 4950 2250
 F 0 "Y1" H 4750 2050 50  0000 C CNN
@@ -48,7 +48,7 @@ F 3 "" H 4950 2500 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R1
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R1
 U 1 1 5B15A6E6
 P 4750 2150
 F 0 "R1" V 4750 2100 50  0000 L CNN
@@ -70,7 +70,7 @@ F 3 "" H 1850 3750 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:SW_Push SW1
+L BSidesCBR2019-rescue:SW_Push-BSidesCBR2019-rescue SW1
 U 1 1 5B15C0ED
 P 7000 5100
 F 0 "SW1" H 7050 5200 50  0000 L CNN
@@ -92,7 +92,7 @@ F 3 "" H 7000 5400 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:Conn_02x03_Odd_Even J2
+L BSidesCBR2019-rescue:Conn_02x03_Odd_Even-BSidesCBR2019-rescue J2
 U 1 1 5B15C48C
 P 7200 4550
 F 0 "J2" H 7250 4750 50  0000 C CNN
@@ -114,7 +114,7 @@ F 3 "" H 6900 4200 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R4
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R4
 U 1 1 5B15CE2B
 P 6750 4100
 F 0 "R4" V 6750 4050 50  0000 L CNN
@@ -133,7 +133,7 @@ GND
 Text Label 7000 5400 0    60   ~ 0
 GND
 $Comp
-L BSidesCBR2019-rescue:Nokia_5110_LCD U2
+L BSidesCBR2019-rescue:Nokia_5110_LCD-BSidesCBR2019-rescue U2
 U 1 1 5B1626A2
 P 6550 1550
 F 0 "U2" H 6550 1000 60  0000 C CNN
@@ -201,7 +201,7 @@ LCDCE
 Text GLabel 4150 1250 1    60   Input ~ 0
 LCDBL+
 $Comp
-L BSidesCBR2019-rescue:LED_Small D1
+L BSidesCBR2019-rescue:LED_Small-BSidesCBR2019-rescue D1
 U 1 1 5B16F4CE
 P 5650 2400
 F 0 "D1" H 5600 2525 50  0000 L CNN
@@ -212,7 +212,7 @@ F 3 "" V 5650 2400 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:LED_Small D2
+L BSidesCBR2019-rescue:LED_Small-BSidesCBR2019-rescue D2
 U 1 1 5B16F558
 P 5650 2750
 F 0 "D2" H 5600 2875 50  0000 L CNN
@@ -252,7 +252,7 @@ RXD
 Text GLabel 4500 3100 2    60   Input ~ 0
 TXD
 $Comp
-L BSidesCBR2019-rescue:Battery_Cell_PWR BT1
+L BSidesCBR2019-rescue:Battery_Cell_PWR-BSidesCBR2019-rescue BT1
 U 1 1 5B180D41
 P 850 2300
 F 0 "BT1" H 950 2400 50  0000 L CNN
@@ -293,7 +293,7 @@ RXD
 Text GLabel 6600 4450 0    60   Input ~ 0
 TXD
 $Comp
-L BSidesCBR2019-rescue:Conn_02x02_Odd_Even J1
+L BSidesCBR2019-rescue:Conn_02x02_Odd_Even-BSidesCBR2019-rescue J1
 U 1 1 5B7A0349
 P 7500 4100
 F 0 "J1" H 7550 4200 50  0000 C CNN
@@ -304,7 +304,7 @@ F 3 "" H 7500 4100 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R5
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R5
 U 1 1 5B7A725B
 P 5850 2750
 F 0 "R5" V 5750 2700 50  0000 L CNN
@@ -315,7 +315,7 @@ F 3 "" H 5850 2750 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:LED_Small D3
+L BSidesCBR2019-rescue:LED_Small-BSidesCBR2019-rescue D3
 U 1 1 5BA8E247
 P 5650 3100
 F 0 "D3" H 5600 3225 50  0000 L CNN
@@ -326,7 +326,7 @@ F 3 "" V 5650 3100 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:LED_Small D4
+L BSidesCBR2019-rescue:LED_Small-BSidesCBR2019-rescue D4
 U 1 1 5BA8E357
 P 5650 3450
 F 0 "D4" H 5600 3575 50  0000 L CNN
@@ -337,7 +337,7 @@ F 3 "" V 5650 3450 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R3
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R3
 U 1 1 5BA8E4CA
 P 5850 3100
 F 0 "R3" V 5750 3050 50  0000 L CNN
@@ -348,7 +348,7 @@ F 3 "" H 5850 3100 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R6
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R6
 U 1 1 5BA8E550
 P 5850 3450
 F 0 "R6" V 5750 3400 50  0000 L CNN
@@ -359,7 +359,7 @@ F 3 "" H 5850 3450 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:R_Small R2
+L BSidesCBR2019-rescue:R_Small-BSidesCBR2019-rescue R2
 U 1 1 5BA8E5DF
 P 5850 2400
 F 0 "R2" V 5750 2350 50  0000 L CNN
@@ -370,7 +370,7 @@ F 3 "" H 5850 2400 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:C_Small C1
+L BSidesCBR2019-rescue:C_Small-BSidesCBR2019-rescue C1
 U 1 1 5BA8FEB5
 P 5900 1250
 F 0 "C1" H 6000 1200 50  0000 L CNN
@@ -615,7 +615,7 @@ AD3
 Wire Wire Line
 	4100 3400 4200 3400
 $Comp
-L BSidesCBR2019-rescue:CONN_01X08 J3
+L BSidesCBR2019-rescue:CONN_01X08-BSidesCBR2019-rescue J3
 U 1 1 5BD855DB
 P 4600 5250
 F 0 "J3" H 4600 5850 50  0000 C CNN
@@ -642,12 +642,12 @@ Wire Wire Line
 Wire Wire Line
 	4200 5600 4400 5600
 $Comp
-L BSidesCBR2019-rescue:SW_SPDT SW2
+L BSidesCBR2019-rescue:SW_SPDT-BSidesCBR2019-rescue SW2
 U 1 1 5BD88412
 P 950 1650
-F 0 "SW2" H 950 1775 50  0000 C CNN
+F 0 "SW2" H 950 1850 50  0000 C CNN
 F 1 "SW_SPST" H 950 1450 50  0000 C CNN
-F 2 "Buttons_Switches_SMD:SW_SPDT_PCM12" H 950 1650 50  0001 C CNN
+F 2 "Button_Switch_SMD:SW_SPDT_PCM12" H 950 1650 50  0001 C CNN
 F 3 "" H 950 1650 50  0001 C CNN
 	1    950  1650
 	0    1    1    0   
@@ -664,48 +664,44 @@ Wire Wire Line
 Text GLabel 850  1950 0    60   Input ~ 0
 BAT+
 $Comp
-L BSidesCBR2019-rescue:SW_Push SW3
+L BSidesCBR2019-rescue:SW_Push-BSidesCBR2019-rescue SW3
 U 1 1 5BD89C01
 P 4900 4150
 F 0 "SW3" H 4950 4250 50  0000 L CNN
 F 1 "<<" H 4900 4090 50  0000 C CNN
-F 2 "Buttons_Switches_SMD:SW_SPST_B3SL-1002P" H 4900 4350 50  0001 C CNN
+F 2 "Button_Switch_SMD:SW_SPST_B3SL-1002P" H 4900 4350 50  0001 C CNN
 F 3 "" H 4900 4350 50  0001 C CNN
 	1    4900 4150
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:SW_Push SW4
+L BSidesCBR2019-rescue:SW_Push-BSidesCBR2019-rescue SW4
 U 1 1 5BD89EFA
 P 5300 4150
 F 0 "SW4" H 5350 4250 50  0000 L CNN
 F 1 "O" H 5300 4090 50  0000 C CNN
-F 2 "Buttons_Switches_SMD:SW_SPST_B3SL-1002P" H 5300 4350 50  0001 C CNN
+F 2 "Button_Switch_SMD:SW_SPST_B3SL-1002P" H 5300 4350 50  0001 C CNN
 F 3 "" H 5300 4350 50  0001 C CNN
 	1    5300 4150
 	0    1    1    0   
 $EndComp
 $Comp
-L BSidesCBR2019-rescue:SW_Push SW5
+L BSidesCBR2019-rescue:SW_Push-BSidesCBR2019-rescue SW5
 U 1 1 5BD89F58
 P 5700 4150
 F 0 "SW5" H 5750 4250 50  0000 L CNN
 F 1 ">>" H 5700 4090 50  0000 C CNN
-F 2 "Buttons_Switches_SMD:SW_SPST_B3SL-1002P" H 5700 4350 50  0001 C CNN
+F 2 "Button_Switch_SMD:SW_SPST_B3SL-1002P" H 5700 4350 50  0001 C CNN
 F 3 "" H 5700 4350 50  0001 C CNN
 	1    5700 4150
 	0    1    1    0   
 $EndComp
-Text GLabel 5300 3800 1    60   Input ~ 0
-+3.3v
 Wire Wire Line
 	4900 3950 4900 3850
 Wire Wire Line
 	4900 3850 5300 3850
 Wire Wire Line
 	5700 3850 5700 3950
-Wire Wire Line
-	5300 3800 5300 3850
 Connection ~ 5300 3850
 Wire Wire Line
 	4750 2250 4800 2250
@@ -759,4 +755,17 @@ Wire Wire Line
 	4950 4700 4900 4700
 Wire Wire Line
 	4900 4700 4900 4350
+$Comp
+L power:GND #PWR0101
+U 1 1 5C149655
+P 5300 3700
+F 0 "#PWR0101" H 5300 3450 50  0001 C CNN
+F 1 "GND" H 5300 3550 50  0000 C CNN
+F 2 "" H 5300 3700 50  0001 C CNN
+F 3 "" H 5300 3700 50  0001 C CNN
+	1    5300 3700
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	5300 3700 5300 3850
 $EndSCHEMATC

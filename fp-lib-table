@@ -1,5 +1,5 @@
 (fp_lib_table
   (lib (name dipole)(type KiCad)(uri "$(KIPRJMOD)/dipole.pretty")(options "")(descr ""))
-  (lib (name Nokia_5110-3310_LCD)(type KiCad)(uri /home/user/Boards/kicad-libs2/footprints/Nokia_5110-3310_LCD.pretty)(options "")(descr ""))
-  (lib (name ATMEGA328P-AU)(type Legacy)(uri /home/user/Boards/kicad-lib/ATMEGA328P/ATMEGA328P-AU.mod)(options "")(descr ""))
+  (lib (name Nokia_5110-3310_LCD)(type KiCad)(uri ./Nokia_5110-3310_LCD.pretty)(options "")(descr ""))
+  (lib (name ATMEGA328P-AU)(type Legacy)(uri ./ATMEGA328P/ATMEGA328P-AU.mod)(options "")(descr ""))
 )

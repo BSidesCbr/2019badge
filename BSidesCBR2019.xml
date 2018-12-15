@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <export version="D">
   <design>
-    <source>/home/user/Boards/BSidesCBR2019/BSidesCBR2019.sch</source>
+    <source>./BSidesCBR2019.sch</source>
     <date>Tue Oct 30 23:05:31 2018</date>
     <tool>Eeschema 4.0.6</tool>
     <sheet number="1" name="/" tstamps="/">
@@ -436,13 +436,16 @@
       <uri>/usr/share/kicad/library/atmel.lib</uri>
     </library>
     <library logical="nokia_5110-3310_lcd">
-      <uri>/home/user/Boards/kicad-libs2/components/Nokia_5110-3310_LCD/nokia_5110-3310_lcd.lib</uri>
+      <uri>./Nokia_5110-3310_LCD/nokia_5110-3310_lcd.lib</uri>
+    </library>
+    <library logical="w_battery_holders">
+	<uri>./w_battery_holders.pretty/</uri>
     </library>
     <library logical="conn">
       <uri>/usr/share/kicad/library/conn.lib</uri>
     </library>
     <library logical="BSidesCBR2019-cache">
-      <uri>/home/user/Boards/BSidesCBR2019/BSidesCBR2019-cache.lib</uri>
+      <uri>./BSidesCBR2019-cache.lib</uri>
     </library>
     <library logical="device">
       <uri>/usr/share/kicad/library/device.lib</uri>
