@@ -22,9 +22,29 @@
 #define NOKIA_5110_DC     7
 #define NOKIA_5110_CE     6
 #define NOKIA_5110_RST    5
+#define NOKIA_5110_BL     8
+
+//GPIO_ARDUINO_UNO_DEV_BOARD
+#define GPIO_MODIFIED_DEC_PROTOTYPE
+//GPIO_ARDUINO_UNO_DEV_BOARD
+
+#ifdef GPIO_ARDUINO_UNO_DEV_BOARD
 #define BUTTON_LEFT       4
 #define BUTTON_OK         3
 #define BUTTON_RIGHT      2
+#endif
+
+#ifdef GPIO_MODIFIED_DEC_PROTOTYPE
+#define BUTTON_LEFT       9
+#define BUTTON_OK         10
+#define BUTTON_RIGHT      2
+#endif
+
+#ifdef GPIO_PRODUCTION
+#define BUTTON_LEFT       2
+#define BUTTON_OK         3
+#define BUTTON_RIGHT      4
+#endif
 
 //-----------------------------------------------------------------------------
 // Logging
@@ -276,9 +296,9 @@ void button_set_callback(void *func, void *ctx) {
     button_ctx = ctx;
 }
 void button_init() {
-    pinMode(BUTTON_LEFT, INPUT);
-    pinMode(BUTTON_OK, INPUT);
-    pinMode(BUTTON_RIGHT, INPUT);
+    pinMode(BUTTON_LEFT, INPUT_PULLUP);
+    pinMode(BUTTON_OK, INPUT_PULLUP);
+    pinMode(BUTTON_RIGHT, INPUT_PULLUP);
 
     // clear state
     memset(button_state, 0, sizeof(button_state));
@@ -412,7 +432,12 @@ void nokia_init() {
     nokia_send_command(0x21);             // Tell LCD that extended commands follow
     nokia_send_command(0x80 | 60);        // Set LCD Vop (Contrast)
     nokia_send_command(0x20);             // Set display mode
-    
+
+    // backlight
+    pinMode(NOKIA_5110_BL, OUTPUT);
+    digitalWrite(NOKIA_5110_BL, HIGH);
+
+    // draw a screen with just black
     nokia_draw_black();
     nokia_swap_fb();
     delay(1000);
