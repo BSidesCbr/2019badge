@@ -27,6 +27,8 @@
 #include <string.h>
 #include "qrcodegen.h"
 
+#include <avr/pgmspace.h>
+
 #ifndef QRCODEGEN_TEST
 	#define testable static  // Keep functions private
 #else

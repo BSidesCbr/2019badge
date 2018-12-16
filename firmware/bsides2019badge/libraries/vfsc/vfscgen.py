@@ -35,14 +35,8 @@ class HexDataHeader(object):
             text += '#include <cstdint>\n'
         text += '\n'
 
-        # non-ardiuno guard
-        text += '// non - arduino\n'
-        text += '#ifndef PROGMEM\n'
-        text += '#define PROGMEM\n'
-        text += '#endif\n'
-        text += '#ifndef pgm_read_byte\n'
-        text += '#define pgm_read_byte(addr) (*((uint8_t*)addr))\n'
-        text += '#endif\n'
+        # support for PROGMEM
+        text += '#include <avr/pgmspace.h>\n'
         text += '\n'
 
         # namesapce

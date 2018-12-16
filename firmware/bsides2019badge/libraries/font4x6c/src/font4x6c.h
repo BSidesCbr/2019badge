@@ -29,14 +29,6 @@ typedef short off_t;
 // Credits to:
 // https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit
 
-// non-arduino
-#ifndef PROGMEM
-#define PROGMEM
-#endif
-#ifndef pgm_read_byte
-#define pgm_read_byte(addr) (*((uint8_t*)addr))
-#endif
-
 #define F46C_WIDTH      4
 #define F46C_HEIGHT     6
 

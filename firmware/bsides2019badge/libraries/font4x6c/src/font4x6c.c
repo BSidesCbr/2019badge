@@ -1,4 +1,5 @@
 #include "font4x6c.h"
+#include <avr/pgmspace.h>
 
 // Credits to:
 // https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit

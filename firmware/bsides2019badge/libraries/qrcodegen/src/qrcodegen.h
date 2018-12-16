@@ -29,14 +29,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// added to save ram
-#ifndef PROGMEM
-#define PROGMEM
-#endif
-#ifndef pgm_read_byte
-#define pgm_read_byte(addr) (*((uint8_t*)addr))
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif

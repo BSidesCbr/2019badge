@@ -3,9 +3,18 @@
 // Based on tutorial
 // http://javilop.com/gamedev/tetris-tutorial-in-c-platform-independent-focused-in-game-logic-for-beginners/
 
-#ifndef PROGMEM
-#define PROGMEM
-#endif
+#include <avr/pgmspace.h>
+
+// so I can read a 32-bit value from program memory (AVR)
+#define TTRS_ADDR_ADD(addr,offset)  ((void*)(((uint8_t*)(addr)) + (offset)))
+static uint32_t ttrs_pgm_read_uint32_le(void *addr) {
+    uint32_t value = 0;
+    value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 0))) << 0 ) & 0x000000ff;
+    value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 1))) << 8 ) & 0x0000ff00;
+    value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 2))) << 16) & 0x00ff0000;
+    value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 3))) << 24) & 0xff000000;
+    return value;
+}
 
 // encode the blocks
 // originally 7 x 4 x 5 x 5 = 700 bytes
@@ -331,7 +340,7 @@ static TTRS_BLOCK_TYPE ttrs_get_block_type(TTRS_PIECE_TYPE piece, uint8_t rotati
     // 4 * 4 * 2 = 32 bits
     // we can have an array of 32-bit numbers now :)
     // much smaller
-    return TTRS_PIECE_DECODE(TTRS_PIECE_BITS[TTRS_PIECE_INDEX(piece, rotation)], x, y);
+    return TTRS_PIECE_DECODE(ttrs_pgm_read_uint32_le(&TTRS_PIECE_BITS[TTRS_PIECE_INDEX(piece, rotation)]), x, y);
 }
 
 // Displacement of the piece to the position where it is first drawn in the board when it is created
@@ -407,12 +416,12 @@ const uint8_t TTRS_DISPLACEMENT_BITS[TTRS_PIECE_KIND_COUNT] PROGMEM = {
 
 static int16_t ttrs_get_x_initial_position(TTRS_PIECE_TYPE piece, uint8_t rotation)
 {
-    return TTRS_DISPLACEMENT_DECODE(TTRS_DISPLACEMENT_BITS[TTRS_DISPLACEMENT_INDEX(piece)], rotation, 0);
+    return TTRS_DISPLACEMENT_DECODE(pgm_read_byte(&TTRS_DISPLACEMENT_BITS[TTRS_DISPLACEMENT_INDEX(piece)]), rotation, 0);
 }
 
 static int16_t ttrs_get_y_initial_position(TTRS_PIECE_TYPE piece, uint8_t rotation)
 {
-    return TTRS_DISPLACEMENT_DECODE(TTRS_DISPLACEMENT_BITS[TTRS_DISPLACEMENT_INDEX(piece)], rotation, 1);
+    return TTRS_DISPLACEMENT_DECODE(pgm_read_byte(&TTRS_DISPLACEMENT_BITS[TTRS_DISPLACEMENT_INDEX(piece)]), rotation, 1);
 }
 
 // The board is stored as an array of bytes

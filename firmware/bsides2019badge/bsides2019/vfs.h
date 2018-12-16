@@ -3,13 +3,7 @@
 
 #include <stdint.h>
 
-// non - arduino
-#ifndef PROGMEM
-#define PROGMEM
-#endif
-#ifndef pgm_read_byte
-#define pgm_read_byte(addr) (*((uint8_t*)addr))
-#endif
+#include <avr/pgmspace.h>
 
 const uint32_t vfs_size = 3412;  // 0x00000d54
 const uint8_t vfs_data[3412] PROGMEM  = {
