@@ -8,6 +8,8 @@
 #include <viewerc.h>
 #include <tinymenuc.h>
 #include <qrcodegen.h>
+#include <EEPROM.h>
+#include <Arduino.h>
 
 //-----------------------------------------------------------------------------
 // Binary data (generated) for Virtual File System (VFS)
@@ -69,6 +71,108 @@ void log_err_imp(uint16_t item_encoded) {
 void serial_init() {
     Serial.begin(115200);
     while (!Serial);
+}
+
+//-----------------------------------------------------------------------------
+// Random
+//-----------------------------------------------------------------------------
+void rng_init() {
+    // not great, got a better idea?
+    // got a better idea??
+    randomSeed(analogRead(0) ^ analogRead(1) ^ analogRead(2) ^ analogRead(3));
+}
+int16_t rng_random_s16(int16_t min, int16_t max) {
+    return (int16_t) random((long)min, (long)(max + 1));
+}
+uint32_t rng_random() {
+    uint32_t value = 0;
+    value |= ((uint32_t)(((uint8_t)analogRead(0)) ^ ((uint8_t)rng_random_s16(0, 255))) << 0)  & 0x000000ff;
+    value |= ((uint32_t)(((uint8_t)analogRead(1)) ^ ((uint8_t)rng_random_s16(0, 255))) << 8)  & 0x0000ff00;
+    value |= ((uint32_t)(((uint8_t)analogRead(2)) ^ ((uint8_t)rng_random_s16(0, 255))) << 16) & 0x00ff0000;
+    value |= ((uint32_t)(((uint8_t)analogRead(3)) ^ ((uint8_t)rng_random_s16(0, 255))) << 24) & 0xff000000;
+    value ^= (uint32_t)millis();
+    return value;
+}
+
+//-----------------------------------------------------------------------------
+// EEPROM persistent config
+//-----------------------------------------------------------------------------
+#define DEVICE_CONFIG_MAGIC       "NOPIA 3117"
+#define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
+
+struct device_config_t {
+    char magic[DEVICE_CONFIG_MAGIC_SIZE];
+    uint16_t counter;
+    uint32_t device_id;
+};
+
+template <class T> int EEPROM_write(int ee, const T& value)
+{
+    const byte* p = (const byte*)(const void*)&value;
+    unsigned int i;
+    for (i = 0; i < sizeof(value); i++)
+          EEPROM.write(ee++, *p++);
+    return i;
+}
+
+template <class T> int EEPROM_read(int ee, T& value)
+{
+    byte* p = (byte*)(void*)&value;
+    unsigned int i;
+    for (i = 0; i < sizeof(value); i++)
+          *p++ = EEPROM.read(ee++);
+    return i;
+}
+bool check_config_ok(struct device_config_t *config) {
+    return 0 == memcmp(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
+}
+void init_config(struct device_config_t *config) {
+    memcpy(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
+    config->device_id = rng_random();
+    config->counter = 0;
+}
+bool read_config(struct device_config_t *config) {
+    if (NULL == config) {
+        return false;
+    }
+    if (sizeof(struct device_config_t) != EEPROM_read(0, *config)) {
+        return false;
+    }
+    if (!check_config_ok(config)) {
+        init_config(config);
+        if (sizeof(struct device_config_t) != EEPROM_write(0, *config)) {
+            return false;
+        }
+        if (sizeof(struct device_config_t) != EEPROM_read(0, *config)) {
+            return false;
+        }
+        if (!check_config_ok(config)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+// Unique device ID
+//-----------------------------------------------------------------------------
+uint32_t device_id(void) {
+    struct device_config_t config;
+    if (!read_config(&config)) {
+        return 0;
+    }
+    return config.device_id;
+}
+
+//-----------------------------------------------------------------------------
+// Unique IMEI (derived from device ID)
+//-----------------------------------------------------------------------------
+#define DEVICE_IMEI_SIZE    (sizeof("3534344111222333"))
+void device_imei(char *buffer, size_t buffer_size) {
+    if (buffer_size < DEVICE_IMEI_SIZE) {
+        return;
+    }
+    sprintf(buffer, "353434%010lu", (unsigned long)device_id());
 }
 
 //-----------------------------------------------------------------------------
@@ -167,32 +271,6 @@ size_t csv_row_size(int fd, size_t row) {
     return 0;
   }
   return (size_t)(offset2 - offset1);
-}
-
-//-----------------------------------------------------------------------------
-// Unique device ID
-//-----------------------------------------------------------------------------
-uint32_t device_id(void) {
-    uint32_t dev_id = 0;
-    int fd = open("/dev/id");
-    if (fd >= 0) {
-        if (4 == read(fd, &dev_id, sizeof(uint32_t))) {
-            return dev_id;
-        }
-    }
-    return 0;
-}
-
-//-----------------------------------------------------------------------------
-// Random
-//-----------------------------------------------------------------------------
-void rng_init() {
-    // not great, got a better idea?
-    // got a better idea??
-    randomSeed(analogRead(0));
-}
-int16_t rng_random_s16(int16_t min, int16_t max) {
-    return (int16_t) random((long)min, (long)(max + 1));
 }
 
 //-----------------------------------------------------------------------------
@@ -1343,9 +1421,17 @@ bool dialer_check_P(const char *number, void *expected_P) {
         viewer_file(dialder_fd, dialer_return); \
         return; \
     }
+static char tmp[20];
+#define DIAL_IMEI(number,expected) \
+    if (DIALER_CHECK(number, expected)) { \
+        dialer_stop(); \
+        device_imei(tmp, sizeof(tmp)); \
+        viewer_c_str(tmp, dialer_return); \
+        return; \
+    }
 void dialer_action(const char *number) {
     DIAL_FILE(number, "*#0000#", "/dev/version");
-    DIAL_FILE(number, "*#06#", "/dev/imei");
+    DIAL_IMEI(number, "*#06#");
     memset(dialer->dialer_number, 0, sizeof(dialer->dialer_number));
     dialer_draw();
     screen_swap_fb();
