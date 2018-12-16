@@ -119,6 +119,8 @@ class Bitmap(object):
         # scanline size
         bytes_per_pixel = self.bits_per_pixel / 8.0
         scan_line_size_no_pad = int(self.width * bytes_per_pixel)
+        if scan_line_size_no_pad == 0:
+            scan_line_size_no_pad = 1
         # scan lines are padded to 4-bytes (this caused much confusion)
         scan_line_size = scan_line_size_no_pad
         if scan_line_size % 4 != 0:
@@ -169,7 +171,7 @@ class Bitmap(object):
             self.data = b''.join(monochrome_bytes)
         else:
             raise NotImplementedError("don't know how to parse bits per pixel of {}".format(self.bits_per_pixel))
-        assert len(self.data) == int(self.height * self.width * bytes_per_pixel)
+        #assert len(self.data) == int(self.height * self.width * bytes_per_pixel)
 
 
 class Hash(object):

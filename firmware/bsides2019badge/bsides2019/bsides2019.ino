@@ -165,7 +165,7 @@ uint32_t device_id(void) {
 }
 
 //-----------------------------------------------------------------------------
-// Unique IMEI (derived from device ID)
+// Unique device ID
 //-----------------------------------------------------------------------------
 #define DEVICE_IMEI_SIZE    (sizeof("3534344111222333"))
 void device_imei(char *buffer, size_t buffer_size) {
@@ -425,18 +425,7 @@ void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
         nokia_screen_buffer[index] &=~ (1 << bit);
     }
 }
-void nokia_draw_img(void *data, size_t x = 0, size_t y = 0, size_t width = NOKIA_SCREEN_WIDTH, size_t height = NOKIA_SCREEN_HEIGHT) {
-     for (size_t dy = 0; dy < height; dy++) {
-        for (size_t dx = 0; dx < width; dx++) {
-          size_t index = (dy * width) + dx;
-          size_t index_byte = index / 8;
-          size_t index_bit = 7 - (index % 8);
-          uint8_t value = pgm_read_byte(&(((uint8_t*)data)[index_byte]));
-          nokia_draw_pixel(x + dx, y + dy, ((value >> index_bit) & 0x1) != 0 ? true : false);
-      }
-    }
-}
-void nokia_draw_raw_hash(uint32_t hash, size_t x = 0, size_t y = 0, size_t width = NOKIA_SCREEN_WIDTH, size_t height = NOKIA_SCREEN_HEIGHT) {
+void nokia_draw_raw_hash(uint32_t hash, size_t x, size_t y, size_t width, size_t height) {
     int fd = open_hash(hash);
     if (fd < 0) {
       LOG_ERR(4,0);
@@ -458,7 +447,7 @@ void nokia_draw_raw_hash(uint32_t hash, size_t x = 0, size_t y = 0, size_t width
     }
     close(fd);
 }
-#define nokia_draw_raw(path) nokia_draw_raw_hash(VFSC_HASH(path))
+#define nokia_draw_raw(pathname,x,y,width,height) nokia_draw_raw_hash(VFSC_HASH(pathname),x,y,width,height)
 void nokia_send(const unsigned char lcd_byte, const bool is_data) {
     // tell the LCD that we are writing either to data or a command
     digitalWrite(kDc_pin, is_data);
@@ -556,77 +545,55 @@ void screen_init() {
         LOG_ERR(5,3);
     }
 }
-void screen_draw_img(void *data) {
-  nokia_draw_img(data);
-}
-#define screen_draw_raw(path) nokia_draw_raw(path)
-void screen_swap_fb() {
-    nokia_swap_fb();
-}
-void screen_draw_clear() {
-    nokia_draw_clear();
-}
-void screen_fill_rect(size_t x, size_t y, size_t w, size_t h, bool color) {
-    vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0);
-}
-void screen_draw_rect(size_t x, size_t y, size_t w, size_t h, bool color) {
-    vg2d_draw_rect(&screen, x, y, w, h, color ? 1 : 0);
-}
-void screen_draw_line(size_t x0, size_t y0, size_t x1, size_t y1, bool color) {
-    vg2d_draw_line(&screen, x0, y0, x1, y1, color ? 1 : 0);
-}
-void screen_draw_pixel(size_t x, size_t y, bool color) {
-    nokia_draw_pixel(x, y, color ? 1 : 0);
-}
-void screen_draw_char(size_t x, size_t y, char c, bool color, bool bg) {
-    vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0);
-}
-void screen_draw_string(size_t x, size_t y, const char *s, bool color, bool bg) {
-    vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0);
-}
+#define screen_draw_raw(pathname,x,y,w,h)     nokia_draw_raw(pathname,x,y,w,h)
+#define screen_swap_fb()                      nokia_swap_fb()
+#define screen_draw_clear()                   nokia_draw_clear()
+#define screen_fill_rect(x,y,w,h,color)       vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0)
+#define screen_draw_rect(x,y,w,h,color)       vg2d_draw_rect(&screen, x, y, w, h, color ? 1 : 0)
+#define screen_draw_line(x0,y0,x1,y1,color)   vg2d_draw_line(&screen, x0, y0, x1, y1, color ? 1 : 0)
+#define screen_draw_pixel(x,y,color)          nokia_draw_pixel(x, y, color ? 1 : 0)
+#define screen_draw_char(x,y,c,color,bg)      vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0)
+#define screen_draw_string(x,y,s,color,bg)    vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0)
 
 //-----------------------------------------------------------------------------
 // Dashboard Power and Signal
 //-----------------------------------------------------------------------------
-static uint8_t dash_power = 3;
-void dash_power_draw() {
-  screen_fill_rect(SCREEN_WIDTH - 6, 0, 6, 38, SCREEN_COLOR_WHITE);
-  if (dash_power >= 4) {
-    screen_fill_rect(SCREEN_WIDTH - 4, 0, 4, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_power >= 3) {
-    screen_fill_rect(SCREEN_WIDTH - 3, 8, 3, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_power >= 2) {
-    screen_fill_rect(SCREEN_WIDTH - 2, 16, 2, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_power >= 1) {
-    screen_fill_rect(SCREEN_WIDTH - 2, 24, 2, 6, SCREEN_COLOR_BLACK);
-  }
-  screen_fill_rect(SCREEN_WIDTH - 3, 31, 2, 2, SCREEN_COLOR_BLACK);
-  screen_draw_rect(SCREEN_WIDTH - 4, 32, 4, 5, SCREEN_COLOR_BLACK);
+static uint8_t dash_power;
+static uint8_t dash_signal;
+void dash_draw(bool left) {
+    size_t x = 0;
+    size_t dx = 0;
+    uint8_t value = dash_signal;
+    if (!left) {
+        x = SCREEN_WIDTH - 6;
+        value = dash_power;
+        dx = 1;
+    }
+    screen_fill_rect(x, 0, 6, 38, SCREEN_COLOR_WHITE);
+    x += dx;
+    x += dx;
+    if (value >= 4) {
+        screen_fill_rect(x, 0, 4, 7, SCREEN_COLOR_BLACK);
+    }
+    x += dx;
+    if (value >= 3) {
+        screen_fill_rect(x, 8, 3, 7, SCREEN_COLOR_BLACK);
+    }
+    x += dx;
+    if (value >= 2) {
+        screen_fill_rect(x, 16, 2, 7, SCREEN_COLOR_BLACK);
+    }
+    if (value >= 1) {
+        screen_fill_rect(x, 24, 2, 6, SCREEN_COLOR_BLACK);
+    }
+    if (!left) {
+        screen_draw_raw("/img/batt.raw", x - 2, 31, 4, 6);
+    } else {
+        screen_draw_raw("/img/signal.raw", x, 31, 5, 6);
+    }
 }
-static uint8_t dash_signal = 4;
-void dash_signal_draw() {
-  screen_fill_rect(0, 0, 6, 38, SCREEN_COLOR_WHITE);
-  if (dash_signal >= 4) {
-    screen_fill_rect(0, 0, 4, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_signal >= 3) {
-    screen_fill_rect(0, 8, 3, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_signal >= 2) {
-    screen_fill_rect(0, 16, 2, 7, SCREEN_COLOR_BLACK);
-  }
-  if (dash_signal >= 1) {
-    screen_fill_rect(0, 24, 2, 6, SCREEN_COLOR_BLACK);
-  }
-  screen_draw_line(0, 31, 4, 31, SCREEN_COLOR_BLACK);
-  screen_draw_line(2, 31, 2, 31 + 5, SCREEN_COLOR_BLACK);
-  screen_draw_line(0, 32, 1, 32 + 1, SCREEN_COLOR_BLACK);
-  screen_draw_pixel(3, 33, SCREEN_COLOR_BLACK);
-  screen_draw_pixel(4, 32, SCREEN_COLOR_BLACK);
-}
+#define dash_signal_draw()    dash_draw(true)
+#define dash_power_draw()     dash_draw(false)
 void VINTC_API dash_update(void *ctx) {
     dash_power = rng_random_s16(0, 4);
     dash_signal = rng_random_s16(0, 4);
@@ -1856,12 +1823,12 @@ void setup() {
     LOG("NOPIA 1337");
 
     // IMAGE: BSIDESCBR
-    screen_draw_raw("/img/bsidescbr.raw");
+    screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
     delay(2000);
 
     // IMAGE: NOPIA
-    screen_draw_raw("/img/nopia.raw");
+    screen_draw_raw("/img/nopia.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
     delay(2000);
 
@@ -1871,7 +1838,7 @@ void setup() {
     delay(2000);
 
     // IMAGE: CYBERNATS
-    screen_draw_raw("/img/cybernats.raw");
+    screen_draw_raw("/img/cybernats.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
     delay(1000);
 
