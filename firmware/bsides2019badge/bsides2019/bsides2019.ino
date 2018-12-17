@@ -615,14 +615,37 @@ void boot_unlocked_draw(void *mem, size_t mem_size) {
     screen_draw_string(0, 16, mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 
-
 //-----------------------------------------------------------------------------
-// RETURN TO MENU
+// Go back handler
 //-----------------------------------------------------------------------------
-void schedule_menu_hash(uint32_t hash);
-void link_menu();
-void game_menu();
-void main_menu();
+#define GOBACK_MAX_DEPTH    10
+typedef void(*GoBackFn)(void *);
+struct goback_entry_t {
+    GoBackFn  go_back;
+    void *    go_back_ctx;
+};
+static struct goback_entry_t goback_call_stack[GOBACK_MAX_DEPTH];
+static size_t goback_pos = 0;
+void goback_init() {
+    goback_pos = 0;
+}
+void goback_return_to_me(GoBackFn func, void *ctx) {
+    if (goback_pos >= GOBACK_MAX_DEPTH) {
+        return;
+    }
+    goback_call_stack[goback_pos].go_back = func;
+    goback_call_stack[goback_pos].go_back_ctx = ctx;
+    goback_pos++;
+}
+void goback_return(void) {
+    if (goback_pos <= 0) {
+        return;
+    }
+    goback_pos--;
+    GoBackFn func = goback_call_stack[goback_pos].go_back;
+    void *ctx = goback_call_stack[goback_pos].go_back_ctx;
+    func(ctx);
+}
 
 //-----------------------------------------------------------------------------
 // QR Code
@@ -657,20 +680,17 @@ void qrcode_draw(void *text) {
     }
   }
 }
-typedef void (*QRCodeFn)(void);
 void qrcode_button_press(void *ctx, button_key_t key, button_state_t state) {
-    QRCodeFn backfn = (QRCodeFn)ctx;
     if (BUTTON_STATE_DOWN == state) {
-        backfn();
+        goback_return();
     }
 }
-void qrcode_display(void *text, void* backfn) {
+void qrcode_display(void *text) {
     qrcode_draw(text);
     screen_swap_fb();
-    button_set_callback(qrcode_button_press, (void*)backfn);
+    button_set_callback(qrcode_button_press, NULL);
 }
 
-    
 //-----------------------------------------------------------------------------
 // Score (upload via QR code)
 //-----------------------------------------------------------------------------
@@ -709,14 +729,14 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     // encode token
     score_token_encode(buffer, buffer_size, token, sizeof(token));
 }
-void score_upload(uint8_t game, uint16_t score, void *backfn) {
+void score_upload(uint8_t game, uint16_t score) {
     char url[100];
     int fd = open("/text/score-url.txt");
     memset(url, 0, sizeof(url));
     if (fd >= 0) {
         if (read(fd, url, sizeof(url)-1) > 10) {
             score_token(url+strlen(url), (sizeof(url)-1)-strlen(url), game, score);
-            qrcode_display(url, backfn);
+            qrcode_display(url);
             memset(url, 0, sizeof(url));
             memcpy_P(url, F("UPLOAD SCORE "), sizeof("UPLOAD SCORE "));
             screen_draw_string(0, SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
@@ -759,12 +779,13 @@ int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
 }
 void snake_start();
 void snake_stop();
-void snake_game_return(void) {
+void snake_game_return(void *ctx) {
     snake_start();
 }
 void SNKC_API snake_game_over_api(void *ctx, uint16_t score) {
     snake_stop();
-    score_upload(SCORE_CODE_SNAKE, score, snake_game_return);
+    goback_return_to_me(snake_game_return, NULL);
+    score_upload(SCORE_CODE_SNAKE, score);
 }
 void snake_draw_end() {
     screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
@@ -788,7 +809,7 @@ void snake_button_press(void *ctx, button_key_t key, button_state_t state) {
   if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
         // return to menu
         snake_stop();
-        game_menu();
+        goback_return();
         return;
   }
   if (BUTTON_STATE_DOWN != state) {
@@ -950,12 +971,13 @@ int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
 }
 void tetris_start();
 void tetris_stop();
-void tetris_game_return(void) {
+void tetris_game_return(void *ctx) {
     tetris_start();
 }
 void TTRS_API tetris_game_over(void *ctx, uint16_t score) {
     tetris_stop();
-    score_upload(SCORE_CODE_TETRIS, score, tetris_game_return);
+    goback_return_to_me(tetris_game_return, NULL);
+    score_upload(SCORE_CODE_TETRIS, score);
 }
 void tetris_draw_end() {
     screen_draw_rect(TETRIS_DISPLAY_OFFSET, 0, TETRIS_DISPLAY_WIDTH, TETRIS_DISPLAY_HEIGHT, SCREEN_COLOR_BLACK);
@@ -979,7 +1001,7 @@ void tetris_button_press(void *ctx, button_key_t key, button_state_t state) {
   if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
       // return to menu
       tetris_stop();
-      game_menu();
+      goback_return();
       return;
   }
   if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_DOWN == state)) {
@@ -1171,9 +1193,8 @@ void viewer_draw() {
 }
 typedef void (*ViewerFn)(void);
 void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
-  ViewerFn backfn = (ViewerFn)ctx;
   if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-      backfn();
+      goback_return();
       return;
   }
   if (BUTTON_STATE_DOWN != state) {
@@ -1188,7 +1209,7 @@ void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
       screen_swap_fb();
       break;
     case BUTTON_KEY_OK:
-      backfn();
+      goback_return();
       break;
     case BUTTON_KEY_RIGHT:
       if (!vwrc_scroll_down(vwrc_mem)) {
@@ -1205,7 +1226,7 @@ void viewer_init(void *mem, size_t mem_size) {
     vwrc_mem = (uint8_t*)mem;
     vwrc_mem_size = mem_size;
 }
-void viewer_start(void* backfn) {
+void viewer_start() {
 
     // reset
     vwrc_data_size = 0;
@@ -1232,10 +1253,10 @@ void viewer_start(void* backfn) {
     }
 
     // Viewer buttons
-    button_set_callback(viewer_button_press, backfn);
+    button_set_callback(viewer_button_press, NULL);
 }
-void viewer_c_str(const char *text, void* backfn) {
-    viewer_start(backfn);
+void viewer_c_str(const char *text) {
+    viewer_start();
     vwrc_c_str = text;
     vwrc_data_size = (size_t)strlen(text);
     if (!vwrc_set_text(vwrc_mem, vwrc_data_size, viewer_read_c_str_api, NULL)) {
@@ -1244,8 +1265,8 @@ void viewer_c_str(const char *text, void* backfn) {
     viewer_draw();
     screen_swap_fb();
 }
-void viewer_csv_row(int fd, size_t row, void* backfn) {
-    viewer_start(backfn);
+void viewer_csv_row(int fd, size_t row) {
+    viewer_start();
     vwrc_csv_offset = csv_lseek(fd, row, 0);
     if (vwrc_csv_offset < 0) {
       LOG_ERR(9,11);
@@ -1260,18 +1281,18 @@ void viewer_csv_row(int fd, size_t row, void* backfn) {
     viewer_draw();
     screen_swap_fb();
 }
-void viewer_file(int fd, void* backfn) {
-    viewer_start(backfn);
+void viewer_file(int fd) {
+    viewer_start();
     off_t offset = lseek(fd, 0, SEEK_END);
     if (offset < 0) {
         LOG_ERR(9,14);
-        ((ViewerFn)backfn)();
+        goback_return();
         return;
     }
     size_t file_size = (size_t)offset;
     if (!vwrc_set_text(vwrc_mem, file_size, viewer_read_file_api, (void*)fd)) {
         LOG_ERR(9,15);
-        ((ViewerFn)backfn)();
+        goback_return();
         return;
     }
     viewer_draw();
@@ -1369,7 +1390,7 @@ void dialer_stop() {
 
 }
 void dialer_start(void);
-void dialer_return(void) {
+void dialer_return(void *ctx) {
     if (dialder_fd >= 0) {
         close(dialder_fd);
         dialder_fd = -1;
@@ -1385,7 +1406,8 @@ bool dialer_check_P(const char *number, void *expected_P) {
     if (DIALER_CHECK(number, expected)) { \
         dialer_stop(); \
         dialder_fd = open(pathname); \
-        viewer_file(dialder_fd, dialer_return); \
+        goback_return_to_me(dialer_return, NULL); \
+        viewer_file(dialder_fd); \
         return; \
     }
 static char tmp[20];
@@ -1393,7 +1415,8 @@ static char tmp[20];
     if (DIALER_CHECK(number, expected)) { \
         dialer_stop(); \
         device_imei(tmp, sizeof(tmp)); \
-        viewer_c_str(tmp, dialer_return); \
+        goback_return_to_me(dialer_return, NULL); \
+        viewer_c_str(tmp); \
         return; \
     }
 void dialer_action(const char *number) {
@@ -1407,7 +1430,7 @@ void dialer_button_press(void *ctx, button_key_t key, button_state_t state) {
   char dialer_key = DIALER_KEY_BACK;
   if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
       dialer_stop();
-      main_menu();
+      goback_return();
       return;
   }
   if (BUTTON_STATE_DOWN != state) {
@@ -1434,7 +1457,7 @@ void dialer_button_press(void *ctx, button_key_t key, button_state_t state) {
       dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
       if (DIALER_KEY_BACK == dialer_key) {
           dialer_stop();
-          main_menu();
+          goback_return();
           return;
       } else if (DIALER_KEY_ENTER == dialer_key) {
           // enter
@@ -1545,7 +1568,13 @@ void menu_draw() {
     }
     screen_swap_fb();
 }
+void menu_stop();
 void menu_button_press(void *ctx, button_key_t key, button_state_t state) {
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+          menu_stop();
+          goback_return();
+          return;
+    }
     if (BUTTON_STATE_DOWN != state) {
         return;
     }
@@ -1647,26 +1676,32 @@ void menu_stop() {
     menu_fd = -1;
     memset(tmnu_mem, 0, tmnu_mem_size);
 }
-
+void menu_goto_item(size_t item) {
+    tmnu_set_item(tmnu_mem, item);
+    menu_draw();
+}
 //-----------------------------------------------------------------------------
 // SCHEDULE MENU
 //-----------------------------------------------------------------------------
 static int schedule_csv_fd = -1;
 static uint32_t schedule_hash = 0;
-void schedule_menu_return(void) {
+void schedule_menu_hash(uint32_t hash);
+void schedule_menu_return(void *ctx) {
     schedule_menu_hash(0);
+    menu_goto_item((size_t)ctx);
 }
 void schedule_menu_action(void *ctx, size_t item) {
     if (0 == item) {
         menu_stop();
         close(schedule_csv_fd);
         schedule_csv_fd = -1;
-        main_menu();
+        goback_return();
         return;
     }
     item--;
     menu_stop();
-    viewer_csv_row(schedule_csv_fd, item, schedule_menu_return);
+    goback_return_to_me(schedule_menu_return, (void*)item+1);
+    viewer_csv_row(schedule_csv_fd, item);
 }
 void schedule_menu_hash(uint32_t hash) {
     if ((schedule_csv_fd < 0) && (0 != hash)) {
@@ -1680,14 +1715,16 @@ void schedule_menu_hash(uint32_t hash) {
 //-----------------------------------------------------------------------------
 // LINK MENU
 //-----------------------------------------------------------------------------
-void link_menu_return(void) {
+void link_menu();
+void link_menu_return(void *ctx) {
     link_menu();
+    menu_goto_item((size_t)ctx);
 }
 void link_menu_action(void *ctx, size_t item) {
     char url[200] = {0};
     if (0 == item) {
         menu_stop();
-        main_menu();
+        goback_return();
         return;
     }
     item--;
@@ -1695,7 +1732,8 @@ void link_menu_action(void *ctx, size_t item) {
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
     menu_stop();
-    qrcode_display(url, link_menu_return);
+    goback_return_to_me(link_menu_return, (void*)item+1);
+    qrcode_display(url);
 }
 void link_menu() {
     menu_start_csv("Links", "/text/links.csv", link_menu_action, NULL, true);
@@ -1704,18 +1742,25 @@ void link_menu() {
 //-----------------------------------------------------------------------------
 // GAME MENU
 //-----------------------------------------------------------------------------
+void game_menu();
+void game_menu_return(void *ctx) {
+     game_menu();
+     menu_goto_item((size_t)ctx);
+}
 void game_menu_action(void *ctx, size_t item) {
   switch(item) {
         case 0:
             menu_stop();
-            main_menu();
+            goback_return();
             break;
         case 1:
             menu_stop();
+            goback_return_to_me(game_menu_return, (void*)item);
             snake_start();
             break;
         case 2:
             menu_stop();
+            goback_return_to_me(game_menu_return, (void*)item);
             tetris_start();
             break;
     }
@@ -1727,26 +1772,36 @@ void game_menu() {
 //-----------------------------------------------------------------------------
 // MAIN MENU
 //-----------------------------------------------------------------------------
+void main_menu();
+void main_menu_return(void *ctx) {
+    main_menu();
+    menu_goto_item((size_t)ctx);
+}
 void main_menu_action(void *ctx, size_t item) {
     switch(item) {
         case 0:
             menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
             dialer_start();
             break;
         case 1:
             menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day1.csv");
             break;
         case 2:
             menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day2.csv");
             break;
         case 3:
             menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
             link_menu();
             break;
         case 4:
             menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
             game_menu();
             break;
         case 5:
@@ -1783,6 +1838,7 @@ void setup() {
     nokia_init();
     screen_init();
     dash_init();
+    goback_init();
     dialer_init(app_mem, app_mem_size);
     snake_init(app_mem, app_mem_size);
     tetris_init(app_mem, app_mem_size);
