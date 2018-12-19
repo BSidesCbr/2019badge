@@ -8,6 +8,7 @@
 #include <viewerc.h>
 #include <tinymenuc.h>
 #include <qrcodegen.h>
+#include <tinyaes.h>
 #include <avr/eeprom.h>
 
 //-----------------------------------------------------------------------------
@@ -22,6 +23,22 @@
 typedef uint8_t button_key_t;
 typedef uint8_t button_state_t;
 typedef void(*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
+
+//-----------------------------------------------------------------------------
+// Master key, don't lose it!
+//-----------------------------------------------------------------------------
+const uint8_t master[32] PROGMEM  = {
+    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',
+    '\x16','\x98','\x20','\xb6','\x22','\xc5','\x3c','\xe6','\x31','\xd8','\xe9','\xd6','\xad','\x00','\xfd','\x33',
+};
+
+void get_master_key(void *key, size_t key_size) {
+    for (size_t i = 0; i < key_size; i++) {
+        ((uint8_t*)key)[i] = pgm_read_byte(&(master[i]));
+        ((uint8_t*)key)[i] ^= ((uint8_t)i);
+        ((uint8_t*)key)[i] ^= 0xaa;
+    }
+}
 
 //-----------------------------------------------------------------------------
 // Binary data (generated) for Virtual File System (VFS)
@@ -539,6 +556,25 @@ void nokia_init() {
 }
 
 //-----------------------------------------------------------------------------
+// aes
+//-----------------------------------------------------------------------------
+#define AES_BLOCK_SIZE  (AES_BLOCKLEN)
+#define AES_KEY_SIZE    (AES_BLOCKLEN)
+#define AES_IV_SIZE     (AES_BLOCKLEN)
+void aes_128_cbc_no_iv_single_block(void *key, void *data, size_t data_size)
+{
+    if (data_size != AES_BLOCK_SIZE) {
+        memset(data, 0, data_size);
+        return;
+    }
+    uint8_t iv[AES_IV_SIZE];
+    memset(iv, 0, sizeof(iv));
+    struct AES_ctx *aes_ctx = (struct AES_ctx *)nokia_screen_buffer; // dirty hack to reuse screen memory
+    AES_init_ctx_iv(aes_ctx, key, iv);
+    AES_CBC_encrypt_buffer(aes_ctx, data, data_size);
+}
+
+//-----------------------------------------------------------------------------
 // Screen
 //-----------------------------------------------------------------------------
 #define SCREEN_COLOR_WHITE  (false)
@@ -754,6 +790,7 @@ void score_token_encode(char *buffer, size_t buffer_size, const uint8_t *data, s
     }
 }
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
+    uint8_t key[16];
     uint8_t token[16];
     uint32_t token_device_id = 0;
     uint32_t token_score = ((uint32_t)score) * 100;
@@ -764,6 +801,8 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     memcpy(token + 8, &game, 1);
     // 7 bytes left for authentication
     // encode token
+    get_master_key(key, sizeof(key));
+    aes_128_cbc_no_iv_single_block(key, token, sizeof(token));
     score_token_encode(buffer, buffer_size, token, sizeof(token));
 }
 void score_upload(uint8_t game, uint16_t score) {
