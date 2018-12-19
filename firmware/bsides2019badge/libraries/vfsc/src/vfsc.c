@@ -224,8 +224,8 @@ int vfsc_close(void *data, int fd) {
 void vfsc_fini(void *data) {
     uint32_t size = sizeof(VFSC_DATA);
     if (NULL == data) {
-        return -1;
+        return;
     }
     memset(data, 0, size);
-    return 0;
+    return;
 }

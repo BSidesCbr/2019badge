@@ -8,8 +8,20 @@
 #include <viewerc.h>
 #include <tinymenuc.h>
 #include <qrcodegen.h>
-#include <EEPROM.h>
-#include <Arduino.h>
+#include <avr/eeprom.h>
+
+//-----------------------------------------------------------------------------
+// Compile time features (mostly for space considerations)
+//-----------------------------------------------------------------------------
+//#define USE_SERIAL
+#define DISPLAY_CONFIG_ON_BOOT
+
+//-----------------------------------------------------------------------------
+// Types
+//-----------------------------------------------------------------------------
+typedef uint8_t button_key_t;
+typedef uint8_t button_state_t;
+typedef void(*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 
 //-----------------------------------------------------------------------------
 // Binary data (generated) for Virtual File System (VFS)
@@ -51,6 +63,7 @@
 //-----------------------------------------------------------------------------
 // Logging
 //-----------------------------------------------------------------------------
+#ifdef USE_SERIAL
 #define LOG(msg)          Serial.println(F(msg))
 #define LOG_HEX(number)   Serial.println(number,HEX)
 #define LOG_DEC(number)   Serial.println(number,DEC)
@@ -64,13 +77,26 @@ void log_err_imp(uint16_t item_encoded) {
     Serial.println(F(");"));
 }
 #define LOG_ERR(item,subitem) log_err_imp(((item<<8)&0xff00)|((subitem<<0)&0x00ff))
+#else
+void yield(void) {
+    // do nothing
+}
+#define LOG(msg)
+#define LOG_HEX(number)
+#define LOG_DEC(number)
+#define LOG_ERR(item,subitem)
+#endif
 
 //-----------------------------------------------------------------------------
 // Serial
 //-----------------------------------------------------------------------------
 void serial_init() {
+#ifdef USE_SERIAL
     Serial.begin(115200);
-    while (!Serial);
+    while (!Serial) {
+        // wait
+    }
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -84,14 +110,12 @@ void rng_init() {
 int16_t rng_random_s16(int16_t min, int16_t max) {
     return (int16_t) random((long)min, (long)(max + 1));
 }
-uint32_t rng_random() {
-    uint32_t value = 0;
-    value |= ((uint32_t)(((uint8_t)analogRead(0)) ^ ((uint8_t)rng_random_s16(0, 255))) << 0)  & 0x000000ff;
-    value |= ((uint32_t)(((uint8_t)analogRead(1)) ^ ((uint8_t)rng_random_s16(0, 255))) << 8)  & 0x0000ff00;
-    value |= ((uint32_t)(((uint8_t)analogRead(2)) ^ ((uint8_t)rng_random_s16(0, 255))) << 16) & 0x00ff0000;
-    value |= ((uint32_t)(((uint8_t)analogRead(3)) ^ ((uint8_t)rng_random_s16(0, 255))) << 24) & 0xff000000;
-    value ^= (uint32_t)millis();
-    return value;
+void rng_random(uint32_t *number) {
+    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ ((uint8_t)rng_random_s16(0, 255));
+    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ ((uint8_t)rng_random_s16(0, 255));
+    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ ((uint8_t)rng_random_s16(0, 255));
+    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ ((uint8_t)rng_random_s16(0, 255));
+    ((uint16_t*)number)[0] ^= (uint16_t)millis();
 }
 
 //-----------------------------------------------------------------------------
@@ -105,45 +129,40 @@ struct device_config_t {
     uint16_t counter;
     uint32_t device_id;
 };
-
-template <class T> int EEPROM_write(int ee, const T& value)
-{
-    const byte* p = (const byte*)(const void*)&value;
-    unsigned int i;
-    for (i = 0; i < sizeof(value); i++)
-          EEPROM.write(ee++, *p++);
-    return i;
+bool write_eeprom(int ee, const void *buffer, size_t buffer_size) {
+    for (size_t i = 0; i < buffer_size; i++) {
+        eeprom_write_byte((uint8_t*)(ee++), ((uint8_t*)buffer)[i]);
+    }
+    return true;
 }
-
-template <class T> int EEPROM_read(int ee, T& value)
-{
-    byte* p = (byte*)(void*)&value;
+bool read_eeprom(int ee, void *buffer, size_t buffer_size) {
     unsigned int i;
-    for (i = 0; i < sizeof(value); i++)
-          *p++ = EEPROM.read(ee++);
-    return i;
+    for (size_t i = 0; i < buffer_size; i++) {
+        ((uint8_t*)buffer)[i] = eeprom_read_byte((uint8_t*)(ee++));
+    }
+    return true;
 }
 bool check_config_ok(struct device_config_t *config) {
     return 0 == memcmp(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
 }
 void init_config(struct device_config_t *config) {
     memcpy(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
-    config->device_id = rng_random();
+    rng_random(&(config->device_id));
     config->counter = 0;
 }
 bool read_config(struct device_config_t *config) {
     if (NULL == config) {
         return false;
     }
-    if (sizeof(struct device_config_t) != EEPROM_read(0, *config)) {
+    if (!read_eeprom(0, config, sizeof(device_config_t))) {
         return false;
     }
     if (!check_config_ok(config)) {
         init_config(config);
-        if (sizeof(struct device_config_t) != EEPROM_write(0, *config)) {
+        if (!write_eeprom(0, config, sizeof(device_config_t))) {
             return false;
         }
-        if (sizeof(struct device_config_t) != EEPROM_read(0, *config)) {
+        if (!read_eeprom(0, config, sizeof(device_config_t))) {
             return false;
         }
         if (!check_config_ok(config)) {
@@ -156,23 +175,26 @@ bool read_config(struct device_config_t *config) {
 //-----------------------------------------------------------------------------
 // Unique device ID
 //-----------------------------------------------------------------------------
-uint32_t device_id(void) {
+void get_device_id(uint32_t *device_id) {
     struct device_config_t config;
     if (!read_config(&config)) {
-        return 0;
+        memset(device_id, 0, sizeof(uint32_t));
+        return;
     }
-    return config.device_id;
+    memcpy(device_id, &(config.device_id), sizeof(uint32_t));
 }
 
 //-----------------------------------------------------------------------------
 // Unique device ID
 //-----------------------------------------------------------------------------
 #define DEVICE_IMEI_SIZE    (sizeof("3534344111222333"))
-void device_imei(char *buffer, size_t buffer_size) {
+void get_device_imei(char *buffer, size_t buffer_size) {
+    uint32_t device_id = 0;
     if (buffer_size < DEVICE_IMEI_SIZE) {
         return;
     }
-    sprintf(buffer, "353434%010lu", (unsigned long)device_id());
+    get_device_id(&device_id);
+    sprintf(buffer, "353434%010lu", (unsigned long)device_id);
 }
 
 //-----------------------------------------------------------------------------
@@ -180,18 +202,28 @@ void device_imei(char *buffer, size_t buffer_size) {
 //-----------------------------------------------------------------------------
 static uint8_t vfs[VFSC_VF_CALC_DATA_SIZE(8)];  // max 8 open handles
 uint8_t VFSC_API vfs_read_byte(void *ctx, void *addr) {
-  return pgm_read_byte(addr);
+    ctx = ctx;
+    return pgm_read_byte(addr);
 }
 void vfs_init() {
-  if (0 != vfsc_init(vfs, sizeof(vfs), vfs_data, (size_t)vfs_size, vfs_read_byte, NULL)) {
-    LOG_ERR(1,0);
-  }
+    if (0 != vfsc_init(vfs, sizeof(vfs), (void*)vfs_data, (size_t)vfs_size, vfs_read_byte, NULL)) {
+        LOG_ERR(1,0);
+    }
 }
 #define open_hash(hash,...)     vfsc_open_hash(vfs,hash)
 #define open(pathname,...)      vfsc_open(vfs,pathname)
 #define lseek(fd,offset,whence) vfsc_lseek(vfs,fd,offset,whence)
 #define read(fd,buf,count)      vfsc_read(vfs,fd,buf,count)
 #define close(fd)               vfsc_close(vfs,fd)
+#ifdef SEEK_SET
+#undef SEEK_SET
+#endif
+#ifdef SEEK_CUR
+#undef SEEK_CUR
+#endif
+#ifdef SEEK_END
+#undef SEEK_END
+#endif
 #define SEEK_SET                VFSC_SEEK_SET
 #define SEEK_CUR                VFSC_SEEK_CUR
 #define SEEK_END                VFSC_SEEK_END
@@ -280,6 +312,7 @@ size_t csv_row_size(int fd, size_t row) {
 #define INT_INVALID_HANDLE ((size_t)VINTC_INVALID_HANDLE)
 static uint8_t interrupts[VINTC_CALC_DATA_SIZE(TMR_INTERRUPTS_MAX)] = {0};
 uint32_t VINTC_API interrupts_get_tick_count_api(void *ctx) {
+    ctx = ctx;
     return (uint32_t)millis();
 }
 void interrupts_init() {
@@ -317,25 +350,19 @@ void interrupts_remove(size_t handle) {
 //-----------------------------------------------------------------------------
 // Buttons
 //-----------------------------------------------------------------------------
-//typedef uint8_t button_key_t;
-#define button_key_t uint8_t
 #define BUTTON_KEY_LEFT     ((button_key_t)0)
 #define BUTTON_KEY_OK       ((button_key_t)1)
 #define BUTTON_KEY_RIGHT    ((button_key_t)2)
 #define BUTTON_KEY_COUNT    (3)
-//typedef uint8_t button_state_t;
-#define button_state_t uint8_t
 #define BUTTON_STATE_UP       ((button_state_t)0)
 #define BUTTON_STATE_DOWN     ((button_state_t)1)
 #define BUTTON_STATE_HOLD     ((button_state_t)2)
-typedef void (*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 static ButtonPressFn button_cb = NULL;
 static void *button_ctx = NULL;
 static button_key_t button_state[BUTTON_KEY_COUNT];
 static uint32_t button_timestamp[BUTTON_KEY_COUNT];
 void button_check(int pin, button_key_t key) {
     int val = digitalRead(pin);
-    int mask = 1 << key;
     if ((val == LOW) && (BUTTON_STATE_UP == button_state[key])) {
         // DOWN
         button_state[key] = BUTTON_STATE_DOWN;
@@ -365,11 +392,12 @@ void button_check(int pin, button_key_t key) {
     }
 }
 void button_check_interrupt(void *ctx) {
+    ctx = ctx;
     button_check(BUTTON_LEFT, BUTTON_KEY_LEFT);
     button_check(BUTTON_OK, BUTTON_KEY_OK);
     button_check(BUTTON_RIGHT, BUTTON_KEY_RIGHT);
 }
-void button_set_callback(void *func, void *ctx) {
+void button_set_callback(ButtonPressFn func, void *ctx) {
     button_cb = func;
     button_ctx = ctx;
 }
@@ -521,12 +549,16 @@ void nokia_init() {
 #define SCREEN_FONT_HEIGHT  F46C_HEIGHT
 static VGFX_CANVAS_2D_DATA screen;
 void VGFX_API screen_draw_clear_api(void *ctx, vgfx_color_t color) {
+    ctx = ctx;
+    color = color;
     nokia_draw_clear();
 }
 void VGFX_API screen_draw_pixel_api(void *ctx, size_t x, size_t y, vgfx_color_t color) {
+    ctx = ctx;
     nokia_draw_pixel(x, y, color > 0 ? true : false);
 }
 void VGFX_API screen_draw_char_api(void *ctx, size_t x, size_t y, char c, vgfx_color_t color, vgfx_color_t bg) {
+    ctx = ctx;
     f46c_draw_char(x, y, c, color, bg, screen_draw_pixel_api, NULL);
 }
 void screen_init() {
@@ -595,6 +627,7 @@ void dash_draw(bool left) {
 #define dash_signal_draw()    dash_draw(true)
 #define dash_power_draw()     dash_draw(false)
 void VINTC_API dash_update(void *ctx) {
+    ctx = ctx;
     dash_power = rng_random_s16(0, 4);
     dash_signal = rng_random_s16(0, 4);
 }
@@ -606,13 +639,14 @@ void dash_init() {
 // Unlocked bootloader message
 //-----------------------------------------------------------------------------
 void boot_unlocked_draw(void *mem, size_t mem_size) {
+    mem_size = mem_size;
     // Your device is unlocked and can't be trusted
     memcpy_P(mem, F("Your device is"), sizeof("Your device is"));
-    screen_draw_string(0, 0, mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(0, 0, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     memcpy_P(mem, F("unlocked and"), sizeof("unlocked and"));
-    screen_draw_string(0, 8, mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(0, 8, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     memcpy_P(mem, F("can't be trusted"), sizeof("can't be trusted"));
-    screen_draw_string(0, 16, mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(0, 16, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 
 //-----------------------------------------------------------------------------
@@ -657,35 +691,37 @@ void goback_return(void) {
 static uint8_t *qrcode_mem = NULL;
 static uint8_t *qrcode_temp_mem = NULL;
 void qrcode_init(void *mem, size_t mem_size) {
-  if (mem_size < QR_MEM_SIZE) {
-    return;
-  }
-  qrcode_mem = (uint8_t*)mem;
-  qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
-}
-void qrcode_draw(void *text) {
-  bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, qrcodegen_Ecc_LOW,
-    qrcodegen_MAX_VERSION, qrcodegen_MAX_VERSION, qrcodegen_Mask_0, true);
-  if (!ok) {
-    LOG_ERR(6,0);
-    return;
-  }
-  int size = qrcodegen_getSize(qrcode_mem);
-  int x_offset = (SCREEN_WIDTH / 2) - (size / 2);
-  int y_offset = 0; //(SCREEN_HEIGHT / 2) - (size / 2);
-  screen_draw_clear();
-  for (int y = 0; y < size; y++) {
-    for (int x = 0; x < size; x++) {
-      nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
+    if (mem_size < QR_MEM_SIZE) {
+        return;
     }
-  }
+    qrcode_mem = (uint8_t*)mem;
+    qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
+}
+void qrcode_draw(const char *text) {
+    bool ok = qrcodegen_encodeText(text, qrcode_temp_mem, qrcode_mem, qrcodegen_Ecc_LOW,
+        qrcodegen_MAX_VERSION, qrcodegen_MAX_VERSION, qrcodegen_Mask_0, true);
+    if (!ok) {
+        LOG_ERR(6,0);
+        return;
+    }
+    int size = qrcodegen_getSize(qrcode_mem);
+    int x_offset = (SCREEN_WIDTH / 2) - (size / 2);
+    int y_offset = 0; //(SCREEN_HEIGHT / 2) - (size / 2);
+    screen_draw_clear();
+    for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+            nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
+        }
+    }
 }
 void qrcode_button_press(void *ctx, button_key_t key, button_state_t state) {
+    ctx = ctx;
+    key = key;
     if (BUTTON_STATE_DOWN == state) {
         goback_return();
     }
 }
-void qrcode_display(void *text) {
+void qrcode_display(const char *text) {
     qrcode_draw(text);
     screen_swap_fb();
     button_set_callback(qrcode_button_press, NULL);
@@ -719,8 +755,9 @@ void score_token_encode(char *buffer, size_t buffer_size, const uint8_t *data, s
 }
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
     uint8_t token[16];
-    uint32_t token_device_id = device_id();
+    uint32_t token_device_id = 0;
     uint32_t token_score = ((uint32_t)score) * 100;
+    get_device_id(&token_device_id);
     memset(token, 0, sizeof(token));
     memcpy(token + 0, &token_device_id, 4);
     memcpy(token + 4, &token_score, 4);
@@ -762,27 +799,33 @@ static size_t snkc_mem_size = 0;
 static size_t snkc_int_handle = INT_INVALID_HANDLE;
 static uint8_t snake_direction = 0xff;
 void SNKC_API snake_draw_clear_api(void *ctx) {
+    ctx = ctx;
     screen_draw_clear();
 }
 void SNKC_API snake_draw_snake_api(void *ctx, int16_t x, int16_t y) {
+    ctx = ctx;
     x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
     y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
     screen_fill_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 void SNKC_API snake_draw_apple_api(void *ctx, int16_t x, int16_t y) {
+    ctx = ctx;
     x = SNAKE_GRID_OFFSET + (x * SNAKE_SQUARE_SIZE);
     y = SNAKE_GRID_OFFSET + (y * SNAKE_SQUARE_SIZE);
     screen_draw_rect(x, y, SNAKE_SQUARE_SIZE, SNAKE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
+    ctx = ctx;
     return rng_random_s16(min, max);
 }
 void snake_start();
 void snake_stop();
 void snake_game_return(void *ctx) {
+    ctx = ctx;
     snake_start();
 }
 void SNKC_API snake_game_over_api(void *ctx, uint16_t score) {
+    ctx = ctx;
     snake_stop();
     goback_return_to_me(snake_game_return, NULL);
     score_upload(SCORE_CODE_SNAKE, score);
@@ -792,6 +835,7 @@ void snake_draw_end() {
     screen_swap_fb();
 }
 void VINTC_API snake_tick_api(void *ctx) {
+    ctx = ctx;
     if(!snkc_tick(snkc_mem)) {
         LOG_ERR(7,0);
     }
@@ -805,85 +849,86 @@ void snake_stop() {
     memset(snkc_mem, 0, snkc_mem_size);
 }
 void snake_button_press(void *ctx, button_key_t key, button_state_t state) {
-  int8_t new_direction = (int8_t)snake_direction;
-  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-        // return to menu
-        snake_stop();
-        goback_return();
+    ctx = ctx;
+    int8_t new_direction = (int8_t)snake_direction;
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+            // return to menu
+            snake_stop();
+            goback_return();
+            return;
+    }
+    if (BUTTON_STATE_DOWN != state) {
         return;
-  }
-  if (BUTTON_STATE_DOWN != state) {
-    return;
-  }
-  switch(key) {
-    case BUTTON_KEY_LEFT:
-      if (0xff == snake_direction) {
-        new_direction = 0;  // start going LEFT
-      } else if ((1 == snake_direction) || (3 == snake_direction)) {
-        // up or down - go left
-        new_direction = 0;  // LEFT
-      } else {
-        // left or right - go up
-        new_direction = 1;  // UP
-      }
-      break;
-    case BUTTON_KEY_RIGHT:
-      if (0xff == snake_direction) {
-        new_direction = 2;  // start going RIGHT
-      } else if ((0 == snake_direction) || (2 == snake_direction)) {
-        // left or right - go down
-        new_direction = 3;  // DOWN
-      } else {
-        // up or down - go right
-        new_direction = 2;  // RIGHT
-      }
-      break;
-    case BUTTON_KEY_OK:
-      // rotate clockwise
-      new_direction++;
-      if (new_direction > 3) {
-          new_direction = 0;
-      }
-      break;
-    default:
-      return;
-      break;
-  }
-  if (new_direction < 0) {
-    new_direction = 3;
-  }
-  if (new_direction > 3) {
-    new_direction = 0;
-  }
-  snake_direction = (uint8_t)new_direction;
-  switch(snake_direction) {
-    case 0:
-      if(!snkc_key_left(snkc_mem)) {
-          LOG_ERR(7,1);
-      }
-      snake_draw_end();
-      break;
-    case 1:
-      if(!snkc_key_up(snkc_mem)) {
-          LOG_ERR(7,2);
-      }
-      snake_draw_end();
-      break;
-    case 2:
-      if(!snkc_key_right(snkc_mem)) {
-          LOG_ERR(7,3);
-      }
-      snake_draw_end();
-      break;
-    case 3:
-      if(!snkc_key_down(snkc_mem)) {
-          LOG_ERR(7,4);
-      }
-      snake_draw_end();
-      break;
-    default:
-      break;
-  }
+    }
+    switch(key) {
+        case BUTTON_KEY_LEFT:
+        if (0xff == snake_direction) {
+            new_direction = 0;  // start going LEFT
+        } else if ((1 == snake_direction) || (3 == snake_direction)) {
+            // up or down - go left
+            new_direction = 0;  // LEFT
+        } else {
+            // left or right - go up
+            new_direction = 1;  // UP
+        }
+        break;
+        case BUTTON_KEY_RIGHT:
+        if (0xff == snake_direction) {
+            new_direction = 2;  // start going RIGHT
+        } else if ((0 == snake_direction) || (2 == snake_direction)) {
+            // left or right - go down
+            new_direction = 3;  // DOWN
+        } else {
+            // up or down - go right
+            new_direction = 2;  // RIGHT
+        }
+        break;
+        case BUTTON_KEY_OK:
+        // rotate clockwise
+        new_direction++;
+        if (new_direction > 3) {
+            new_direction = 0;
+        }
+        break;
+        default:
+        return;
+        break;
+    }
+    if (new_direction < 0) {
+        new_direction = 3;
+    }
+    if (new_direction > 3) {
+        new_direction = 0;
+    }
+    snake_direction = (uint8_t)new_direction;
+    switch(snake_direction) {
+        case 0:
+        if(!snkc_key_left(snkc_mem)) {
+            LOG_ERR(7,1);
+        }
+        snake_draw_end();
+        break;
+        case 1:
+        if(!snkc_key_up(snkc_mem)) {
+            LOG_ERR(7,2);
+        }
+        snake_draw_end();
+        break;
+        case 2:
+        if(!snkc_key_right(snkc_mem)) {
+            LOG_ERR(7,3);
+        }
+        snake_draw_end();
+        break;
+        case 3:
+        if(!snkc_key_down(snkc_mem)) {
+            LOG_ERR(7,4);
+        }
+        snake_draw_end();
+        break;
+        default:
+        break;
+    }
 }
 void snake_init(void *mem, size_t mem_size) {
     snkc_mem = (uint8_t*)mem;
@@ -949,32 +994,41 @@ static uint8_t *ttrs_mem = NULL;
 static size_t ttrs_mem_size = 0;
 static size_t ttrs_int_handle = INT_INVALID_HANDLE;
 void TTRS_API tetris_draw_clear(void *ctx) {
+    ctx = ctx;
     screen_draw_clear();
 }
 void TTRS_API tetris_draw_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
+    ctx = ctx;
+    piece = piece;
     x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
     y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
     screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 void TTRS_API tetris_draw_next_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
+    ctx = ctx;
+    piece = piece;
     x = TETRIS_NEXT_PIECE_OFFSET + (x * TETRIS_NEXT_PIECE_SQUARE_SIZE);
     y = TETRIS_NEXT_PIECE_OFFSET + (y * TETRIS_NEXT_PIECE_SQUARE_SIZE);
     screen_draw_rect(x, y, TETRIS_NEXT_PIECE_SQUARE_SIZE, TETRIS_NEXT_PIECE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
+    ctx = ctx;
     x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
     y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
     screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
+    ctx = ctx;
     return rng_random_s16(min, max);
 }
 void tetris_start();
 void tetris_stop();
 void tetris_game_return(void *ctx) {
+    ctx = ctx;
     tetris_start();
 }
 void TTRS_API tetris_game_over(void *ctx, uint16_t score) {
+    ctx = ctx;
     tetris_stop();
     goback_return_to_me(tetris_game_return, NULL);
     score_upload(SCORE_CODE_TETRIS, score);
@@ -984,6 +1038,7 @@ void tetris_draw_end() {
     screen_swap_fb();
 }
 void VINTC_API tetris_tick(void *ctx) {
+    ctx = ctx;
     screen_draw_clear();
     if(!ttrs_tick(ttrs_mem)) {
         LOG_ERR(8,0);
@@ -998,40 +1053,41 @@ void tetris_stop() {
     memset(ttrs_mem, 0, ttrs_mem_size);
 }
 void tetris_button_press(void *ctx, button_key_t key, button_state_t state) {
-  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-      // return to menu
-      tetris_stop();
-      goback_return();
-      return;
-  }
-  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_DOWN == state)) {
-      if(!ttrs_key_left(ttrs_mem)) {
-          LOG_ERR(8,1);
-      }
-      tetris_draw_end();
-      return;
-  }
-  if ((BUTTON_KEY_RIGHT == key) && (BUTTON_STATE_DOWN == state)) {
-      if(!ttrs_key_right(ttrs_mem)) {
-          LOG_ERR(8,2);
-      }
-      tetris_draw_end();
-      return;
-  }
-  if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_UP == state)) {
-      if(!ttrs_key_rotate(ttrs_mem)) {
-          LOG_ERR(8,4);
-      }
-      tetris_draw_end();
-      return;
-  }
-  if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_HOLD == state)) {
-      if(!ttrs_key_drop(ttrs_mem)) {
-          LOG_ERR(8,3);
-      }
-      tetris_draw_end();
-      return;
-  }
+    ctx = ctx;
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+        // return to menu
+        tetris_stop();
+        goback_return();
+        return;
+    }
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_DOWN == state)) {
+        if(!ttrs_key_left(ttrs_mem)) {
+            LOG_ERR(8,1);
+        }
+        tetris_draw_end();
+        return;
+    }
+    if ((BUTTON_KEY_RIGHT == key) && (BUTTON_STATE_DOWN == state)) {
+        if(!ttrs_key_right(ttrs_mem)) {
+            LOG_ERR(8,2);
+        }
+        tetris_draw_end();
+        return;
+    }
+    if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_UP == state)) {
+        if(!ttrs_key_rotate(ttrs_mem)) {
+            LOG_ERR(8,4);
+        }
+        tetris_draw_end();
+        return;
+    }
+    if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_HOLD == state)) {
+        if(!ttrs_key_drop(ttrs_mem)) {
+            LOG_ERR(8,3);
+        }
+        tetris_draw_end();
+        return;
+    }
 }
 void tetris_init(void *mem, size_t mem_size) {
     ttrs_mem = (uint8_t*)mem;
@@ -1093,6 +1149,7 @@ static const char *vwrc_c_str = 0;
 static off_t vwrc_csv_offset = 0;
 static ssize_t vwrc_csv_row_size = 0;
 ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
+    ctx = ctx;
     if (buffer_size >= vwrc_data_size) {
         // can't read more than the amount of data we have
         buffer_size = vwrc_data_size;
@@ -1114,16 +1171,16 @@ ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, s
 }
 ssize_t VWRC_API viewer_read_csv_row(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
     int fd = (int)ctx;
-    if (buffer_size >= vwrc_csv_row_size) {
+    if (buffer_size >= (size_t)vwrc_csv_row_size) {
         // can't read more than the amount of data we have
         buffer_size = vwrc_data_size;
     }
-    if (offset >= vwrc_csv_row_size) {
+    if (offset >= (size_t)vwrc_csv_row_size) {
         // read out of bounds
         LOG_ERR(9,50);
         return -1;
     }
-    if ((offset + buffer_size) > vwrc_csv_row_size) {
+    if ((offset + buffer_size) > (size_t)vwrc_csv_row_size) {
         // reading the last few bytes at the end
         buffer_size = vwrc_csv_row_size - offset;
     }
@@ -1155,6 +1212,7 @@ ssize_t VWRC_API viewer_read_file_api(void *ctx, size_t offset, char *buffer, si
     return read(fd, buffer, buffer_size);
 }
 void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
+    ctx = ctx;
     if (width) {
         *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str));
     }
@@ -1163,6 +1221,7 @@ void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *wi
     }
 }
 void VWRC_API viewer_draw_string_api(void *ctx, size_t x, size_t y, const char *str) {
+    ctx = ctx;
     screen_draw_string(x, y, str, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 void viewer_draw() {
@@ -1191,36 +1250,36 @@ void viewer_draw() {
       screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
     }
 }
-typedef void (*ViewerFn)(void);
 void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
-  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-      goback_return();
-      return;
-  }
-  if (BUTTON_STATE_DOWN != state) {
-    return;
-  }
-  switch(key) {
-    case BUTTON_KEY_LEFT:
-      if (!vwrc_scroll_up(vwrc_mem)) {
-          LOG_ERR(9,4);
-      }
-      viewer_draw();
-      screen_swap_fb();
-      break;
-    case BUTTON_KEY_OK:
-      goback_return();
-      break;
-    case BUTTON_KEY_RIGHT:
-      if (!vwrc_scroll_down(vwrc_mem)) {
-          LOG_ERR(9,5);
-      }
-      viewer_draw();
-      screen_swap_fb();
-      break;
-    default:
-      break;
-  }
+    ctx = ctx;
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+        goback_return();
+        return;
+    }
+    if (BUTTON_STATE_DOWN != state) {
+        return;
+    }
+    switch(key) {
+        case BUTTON_KEY_LEFT:
+        if (!vwrc_scroll_up(vwrc_mem)) {
+            LOG_ERR(9,4);
+        }
+        viewer_draw();
+        screen_swap_fb();
+        break;
+        case BUTTON_KEY_OK:
+        goback_return();
+        break;
+        case BUTTON_KEY_RIGHT:
+        if (!vwrc_scroll_down(vwrc_mem)) {
+            LOG_ERR(9,5);
+        }
+        viewer_draw();
+        screen_swap_fb();
+        break;
+        default:
+        break;
+    }
 }
 void viewer_init(void *mem, size_t mem_size) {
     vwrc_mem = (uint8_t*)mem;
@@ -1318,86 +1377,86 @@ dialer_mem_t *dialer = NULL;
 #define DIALER_KEY_BACK         0
 #define DIALER_KEY_ENTER        1
 char dialer_char(uint8_t x, uint8_t y) {
-  char value = '0';
-  if (0 == x) {
-    return DIALER_KEY_BACK;
-  }
-  if (4 == x) {
-    return DIALER_KEY_ENTER;
-  }
-  x--;
-  value = '1' + ((y * 3) + x);
-  if (10 == (value - '0')) {
-    value = '*';
-  }
-  if (11 == (value - '0')) {
-    value = '0';
-  }
-  if (12 == (value - '0')) {
-    value = '#';
-  }
-  return value;
+    char value = '0';
+    if (0 == x) {
+        return DIALER_KEY_BACK;
+    }
+    if (4 == x) {
+        return DIALER_KEY_ENTER;
+    }
+    x--;
+    value = '1' + ((y * 3) + x);
+    if (10 == (value - '0')) {
+        value = '*';
+    }
+    if (11 == (value - '0')) {
+        value = '0';
+    }
+    if (12 == (value - '0')) {
+        value = '#';
+    }
+    return value;
 }
 void dialer_draw() {
-  size_t btn_x = 0;
-  size_t btn_y = 0;
-  size_t current_y = 0;
-  bool color = SCREEN_COLOR_BLACK;
-  bool bg = SCREEN_COLOR_WHITE;
-  char label[4] = {0};
-  screen_draw_clear();
-  screen_draw_string(DIALER_BUTTON_OFFSET_X, 1, dialer->dialer_number, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-  for (uint8_t x = 0; x < 5; x++) {
-    for (uint8_t y = 0; y < 4; y++) {
-          if (0 == x) {
-              btn_x = 0;
-              btn_y = DIALER_BUTTON_OFFSET_Y;
-              label[0] = '<';
-              label[1] = '-';
-              label[2] = '-';
-          } else if (4 == x) {
-              btn_x = SCREEN_WIDTH - DIALER_BUTTON_WIDTH;
-              btn_y = DIALER_BUTTON_OFFSET_Y;
-              label[0] = 'E';
-              label[1] = 'N';
-              label[2] = 'T';
-          } else {
-              btn_x = DIALER_BUTTON_OFFSET_X + ((x - 1) * (DIALER_BUTTON_WIDTH+1));
-              btn_y = DIALER_BUTTON_OFFSET_Y + (y * (DIALER_BUTTON_HEIGHT+1));
-              label[0] = ' ';
-              label[1] = dialer_char(x, y);
-              label[2] = ' ';
-          }
-          if (((0 == x) && (0 == dialer->dialer_x)) || ((4 == x) && (4 == dialer->dialer_x)) || ((x == dialer->dialer_x) && (y == dialer->dialer_y))) {
-            screen_fill_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
-            color = SCREEN_COLOR_WHITE;
-            bg = SCREEN_COLOR_BLACK;
-          } else {
-            screen_draw_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
-            color = SCREEN_COLOR_BLACK;
-            bg = SCREEN_COLOR_WHITE;
-          }
-          label[3] = '\0';
-          screen_draw_pixel(btn_x, btn_y, SCREEN_COLOR_WHITE);
-          screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y, SCREEN_COLOR_WHITE);
-          screen_draw_pixel(btn_x, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
-          screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
-          screen_draw_string(btn_x + 2, btn_y + 2, label, color, bg);
+    size_t btn_x = 0;
+    size_t btn_y = 0;
+    bool color = SCREEN_COLOR_BLACK;
+    bool bg = SCREEN_COLOR_WHITE;
+    char label[4] = {0};
+    screen_draw_clear();
+    screen_draw_string(DIALER_BUTTON_OFFSET_X, 1, dialer->dialer_number, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    for (uint8_t x = 0; x < 5; x++) {
+        for (uint8_t y = 0; y < 4; y++) {
+            if (0 == x) {
+                btn_x = 0;
+                btn_y = DIALER_BUTTON_OFFSET_Y;
+                label[0] = '<';
+                label[1] = '-';
+                label[2] = '-';
+            } else if (4 == x) {
+                btn_x = SCREEN_WIDTH - DIALER_BUTTON_WIDTH;
+                btn_y = DIALER_BUTTON_OFFSET_Y;
+                label[0] = 'E';
+                label[1] = 'N';
+                label[2] = 'T';
+            } else {
+                btn_x = DIALER_BUTTON_OFFSET_X + ((x - 1) * (DIALER_BUTTON_WIDTH+1));
+                btn_y = DIALER_BUTTON_OFFSET_Y + (y * (DIALER_BUTTON_HEIGHT+1));
+                label[0] = ' ';
+                label[1] = dialer_char(x, y);
+                label[2] = ' ';
+            }
+            if (((0 == x) && (0 == dialer->dialer_x)) || ((4 == x) && (4 == dialer->dialer_x)) || ((x == dialer->dialer_x) && (y == dialer->dialer_y))) {
+                screen_fill_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
+                color = SCREEN_COLOR_WHITE;
+                bg = SCREEN_COLOR_BLACK;
+            } else {
+                screen_draw_rect(btn_x, btn_y, DIALER_BUTTON_WIDTH, DIALER_BUTTON_HEIGHT, SCREEN_COLOR_BLACK);
+                color = SCREEN_COLOR_BLACK;
+                bg = SCREEN_COLOR_WHITE;
+            }
+            label[3] = '\0';
+            screen_draw_pixel(btn_x, btn_y, SCREEN_COLOR_WHITE);
+            screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y, SCREEN_COLOR_WHITE);
+            screen_draw_pixel(btn_x, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
+            screen_draw_pixel(btn_x + DIALER_BUTTON_WIDTH - 1, btn_y + DIALER_BUTTON_HEIGHT - 1, SCREEN_COLOR_WHITE);
+            screen_draw_string(btn_x + 2, btn_y + 2, label, color, bg);
+        }
     }
-  }
 }
 void dialer_stop() {
-
+    // nothing to do
 }
 void dialer_start(void);
 void dialer_return(void *ctx) {
+    ctx = ctx;
     if (dialder_fd >= 0) {
         close(dialder_fd);
         dialder_fd = -1;
     }
     dialer_start();
 }
-bool dialer_check_P(const char *number, void *expected_P) {
+bool dialer_check_P(const char *number, const void *expected_P) {
     memcpy_P(dialer->expect_number, expected_P, sizeof(dialer->expect_number));
     return 0 == strcmp(number, dialer->expect_number);
 }
@@ -1414,7 +1473,7 @@ static char tmp[20];
 #define DIAL_IMEI(number,expected) \
     if (DIALER_CHECK(number, expected)) { \
         dialer_stop(); \
-        device_imei(tmp, sizeof(tmp)); \
+        get_device_imei(tmp, sizeof(tmp)); \
         goback_return_to_me(dialer_return, NULL); \
         viewer_c_str(tmp); \
         return; \
@@ -1427,53 +1486,55 @@ void dialer_action(const char *number) {
     screen_swap_fb();
 }
 void dialer_button_press(void *ctx, button_key_t key, button_state_t state) {
-  char dialer_key = DIALER_KEY_BACK;
-  if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-      dialer_stop();
-      goback_return();
-      return;
-  }
-  if (BUTTON_STATE_DOWN != state) {
-      return;
-  }
-  switch(key) {
-    case BUTTON_KEY_LEFT:
-      dialer->dialer_y++;
-      if (dialer->dialer_y >= 4) {
-        dialer->dialer_y = 0;
-      }
-      dialer_draw();
-      screen_swap_fb();
-      break;
-    case BUTTON_KEY_RIGHT:
-      dialer->dialer_x++;
-      if (dialer->dialer_x >= 5) {
-        dialer->dialer_x = 0;
-      }
-      dialer_draw();
-      screen_swap_fb();
-      break;
-    case BUTTON_KEY_OK:
-      dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
-      if (DIALER_KEY_BACK == dialer_key) {
-          dialer_stop();
-          goback_return();
-          return;
-      } else if (DIALER_KEY_ENTER == dialer_key) {
-          // enter
-          dialer_action(dialer->dialer_number);
-          return;
-      } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
-          dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
-      }
-      dialer_draw();
-      screen_swap_fb();
-      break;
-    default:
-      break;
-  }
+    ctx = ctx;
+    char dialer_key = DIALER_KEY_BACK;
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+        dialer_stop();
+        goback_return();
+        return;
+    }
+    if (BUTTON_STATE_DOWN != state) {
+        return;
+    }
+    switch(key) {
+        case BUTTON_KEY_LEFT:
+        dialer->dialer_y++;
+        if (dialer->dialer_y >= 4) {
+            dialer->dialer_y = 0;
+        }
+        dialer_draw();
+        screen_swap_fb();
+        break;
+        case BUTTON_KEY_RIGHT:
+        dialer->dialer_x++;
+        if (dialer->dialer_x >= 5) {
+            dialer->dialer_x = 0;
+        }
+        dialer_draw();
+        screen_swap_fb();
+        break;
+        case BUTTON_KEY_OK:
+        dialer_key = dialer_char(dialer->dialer_x, dialer->dialer_y);
+        if (DIALER_KEY_BACK == dialer_key) {
+            dialer_stop();
+            goback_return();
+            return;
+        } else if (DIALER_KEY_ENTER == dialer_key) {
+            // enter
+            dialer_action(dialer->dialer_number);
+            return;
+        } else if (strlen(dialer->dialer_number) < (sizeof(dialer->dialer_number) - 1)) {
+            dialer->dialer_number[strlen(dialer->dialer_number)] = dialer_key;
+        }
+        dialer_draw();
+        screen_swap_fb();
+        break;
+        default:
+        break;
+    }
 }
 void dialer_init(void *mem, size_t mem_size) {
+    mem_size = mem_size;
     dialer = (dialer_mem_t*)mem;
 }
 void dialer_start() {
@@ -1499,6 +1560,7 @@ static size_t tmnu_int_handle = INT_INVALID_HANDLE;
 static char menu_title[12];
 static int menu_fd = -1;
 void TMNU_API menu_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
+    ctx = ctx;
     if (width) {
         *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str)); // 4x6 font used
         *width += (MENU_STR_OFFSET_X * 2); // padding on sides
@@ -1509,6 +1571,7 @@ void TMNU_API menu_calc_string_view_api(void *ctx, const char *str, size_t *widt
     }
 }
 void TMNU_API menu_draw_string_api(void *ctx, size_t x, size_t y, const char *str, TMNU_BOOL selected) {
+    ctx = ctx;
     bool color = SCREEN_COLOR_BLACK;
     bool bg = SCREEN_COLOR_WHITE;
     if (TMNU_TRUE == selected) {
@@ -1519,6 +1582,7 @@ void TMNU_API menu_draw_string_api(void *ctx, size_t x, size_t y, const char *st
     screen_draw_string(MENU_OFFSET_X + x + MENU_STR_OFFSET_X, MENU_OFFSET_Y + y + MENU_STR_OFFSET_Y, str, color, bg);
 }
 void TMNU_API menu_csv_item(void *ctx, size_t item, char *buffer, size_t buffer_size) {
+    ctx = ctx;
     int fd_and_back = (int)ctx;
     if (0 != (fd_and_back & 0x80)) {
         if (0 == item) {
@@ -1570,6 +1634,7 @@ void menu_draw() {
 }
 void menu_stop();
 void menu_button_press(void *ctx, button_key_t key, button_state_t state) {
+    ctx = ctx;
     if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
           menu_stop();
           goback_return();
@@ -1601,13 +1666,14 @@ void menu_button_press(void *ctx, button_key_t key, button_state_t state) {
     }
 }
 void VINTC_API menu_update(void *ctx) {
+    ctx = ctx;
     menu_draw();
 }
 void menu_init(void *mem, size_t mem_size) {
     tmnu_mem = (uint8_t*)mem;
     tmnu_mem_size = mem_size;
 }
-void menu_start_csv_hash(void *title_flash, uint32_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, bool back_menu) {
+void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, bool back_menu) {
     size_t item_count = 0;
     int fd_and_back = -1;
 
@@ -1691,6 +1757,7 @@ void schedule_menu_return(void *ctx) {
     menu_goto_item((size_t)ctx);
 }
 void schedule_menu_action(void *ctx, size_t item) {
+    ctx = ctx;
     if (0 == item) {
         menu_stop();
         close(schedule_csv_fd);
@@ -1700,7 +1767,7 @@ void schedule_menu_action(void *ctx, size_t item) {
     }
     item--;
     menu_stop();
-    goback_return_to_me(schedule_menu_return, (void*)item+1);
+    goback_return_to_me(schedule_menu_return, (void*)(item + 1));
     viewer_csv_row(schedule_csv_fd, item);
 }
 void schedule_menu_hash(uint32_t hash) {
@@ -1721,6 +1788,7 @@ void link_menu_return(void *ctx) {
     menu_goto_item((size_t)ctx);
 }
 void link_menu_action(void *ctx, size_t item) {
+    ctx = ctx;
     char url[200] = {0};
     if (0 == item) {
         menu_stop();
@@ -1732,7 +1800,7 @@ void link_menu_action(void *ctx, size_t item) {
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
     menu_stop();
-    goback_return_to_me(link_menu_return, (void*)item+1);
+    goback_return_to_me(link_menu_return, (void*)(item + 1));
     qrcode_display(url);
 }
 void link_menu() {
@@ -1748,7 +1816,8 @@ void game_menu_return(void *ctx) {
      menu_goto_item((size_t)ctx);
 }
 void game_menu_action(void *ctx, size_t item) {
-  switch(item) {
+    ctx = ctx;
+    switch(item) {
         case 0:
             menu_stop();
             goback_return();
@@ -1778,6 +1847,7 @@ void main_menu_return(void *ctx) {
     menu_goto_item((size_t)ctx);
 }
 void main_menu_action(void *ctx, size_t item) {
+    ctx = ctx;
     switch(item) {
         case 0:
             menu_stop();
@@ -1850,6 +1920,15 @@ void setup() {
 
     // IMAGE: BSIDESCBR
     screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+#ifdef DISPLAY_CONFIG_ON_BOOT
+    char msg[DEVICE_IMEI_SIZE];
+    get_device_imei(msg, sizeof(msg));
+    screen_draw_string(0, 0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    uint32_t device_id;
+    get_device_id(&device_id);
+    sprintf(msg, "%lu", (unsigned long)device_id);
+    screen_draw_string(0, SCREEN_FONT_HEIGHT, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+#endif
     screen_swap_fb();
     delay(2000);
 

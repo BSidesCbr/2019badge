@@ -7,7 +7,7 @@
 
 // so I can read a 32-bit value from program memory (AVR)
 #define TTRS_ADDR_ADD(addr,offset)  ((void*)(((uint8_t*)(addr)) + (offset)))
-static uint32_t ttrs_pgm_read_uint32_le(void *addr) {
+static uint32_t ttrs_pgm_read_uint32_le(const void *addr) {
     uint32_t value = 0;
     value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 0))) << 0 ) & 0x000000ff;
     value |= ((uint32_t)(pgm_read_byte(TTRS_ADDR_ADD(addr, 1))) << 8 ) & 0x0000ff00;
