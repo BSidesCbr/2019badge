@@ -10,12 +10,15 @@
 #include <qrcodegen.h>
 #include <tinyaes.h>
 #include <avr/eeprom.h>
+#include <avr/pgmspace.h>
 
 //-----------------------------------------------------------------------------
 // Compile time features (mostly for space considerations)
 //-----------------------------------------------------------------------------
 //#define USE_SERIAL
-#define DISPLAY_CONFIG_ON_BOOT
+#define ENCRYPT_SCORE_TOKEN
+//#define DEBUG_DISPLAY_CONFIG_ON_BOOT
+//#define DEBUG_SCORE_TOKEN
 
 //-----------------------------------------------------------------------------
 // Types
@@ -24,21 +27,39 @@ typedef uint8_t button_key_t;
 typedef uint8_t button_state_t;
 typedef void(*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 
+typedef bool(*WriteEepromFn)(int ee, const void *buffer, size_t buffer_size);
+typedef void(*SetMasterKeyImplFn)(void);
 //-----------------------------------------------------------------------------
 // Master key, don't lose it!
 //-----------------------------------------------------------------------------
-const uint8_t master[32] PROGMEM  = {
-    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',
-    '\x16','\x98','\x20','\xb6','\x22','\xc5','\x3c','\xe6','\x31','\xd8','\xe9','\xd6','\xad','\x00','\xfd','\x33',
+const uint8_t master[4+16+4] PROGMEM  = {
+    '\xec','\x10','\x3b','\xdf',  // random
+    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',  // master key
+    '\xff','\xab','\x81','\xd9',  // first byte must be 0xff for the eeprom address
 };
 
-void get_master_key(void *key, size_t key_size) {
-    for (size_t i = 0; i < key_size; i++) {
-        ((uint8_t*)key)[i] = pgm_read_byte(&(master[i]));
+// Obfuscate the the call to write the master key to EEPROM
+static uint8_t*             key_addr = NULL;
+static WriteEepromFn        write_eeprom_fn = NULL;
+static SetMasterKeyImplFn   set_master_key_impl_fn = NULL;
+
+// This will actually load the master key
+void set_master_key_impl(void) {
+    uint8_t key[16];
+    uint8_t *addr = key_addr;
+    for (size_t i = 0; i < sizeof(key); i++) {
+        ((uint8_t*)key)[i] = pgm_read_byte(addr + 4 + i);
         ((uint8_t*)key)[i] ^= ((uint8_t)i);
         ((uint8_t*)key)[i] ^= 0xaa;
     }
+    write_eeprom_fn(pgm_read_byte(addr + 4 + 16), key, sizeof(key));
 }
+
+// Scatter these in the code base
+#define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master[0]))
+#define MASTER_KEY_SETUP_2_OF_4()   write_eeprom_fn=write_eeprom
+#define MASTER_KEY_SETUP_3_OF_4()   set_master_key_impl_fn=set_master_key_impl
+#define MASTER_KEY_SETUP_4_OF_4()   set_master_key_impl_fn()
 
 //-----------------------------------------------------------------------------
 // Binary data (generated) for Virtual File System (VFS)
@@ -105,6 +126,79 @@ void yield(void) {
 #endif
 
 //-----------------------------------------------------------------------------
+// Utils
+//-----------------------------------------------------------------------------
+void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
+    if (buffer_size <= 0) {
+        return;
+    }
+    if (buffer_size < ((data_size * 2) + 1)) {
+        buffer[0] = '\0';
+        return;
+    }
+    for (size_t i = 0; i < data_size; i++) {
+        sprintf(&(buffer[i*2]), "%02x", data[i]);
+    }
+}
+char fb64_char(uint8_t prev, uint8_t value) {
+    if (0 != (prev & 0x1)) {
+        if (0 == (prev & 0x2)) {
+            if (value < 10) {
+                return '0' + value;
+            } else if (value == 10) {
+                return '+';
+            } else if (value == 11) {
+                return '-';
+            } else if (value > 11) {
+                return 'N' + (value - 11);
+            }
+        } else {
+            if (0 == (prev & 0x4)) {
+                return 'K' + value;
+            } else {
+                return 'k' + value;
+            }
+        }
+    }
+    else {
+        if (0 == (prev & 0x4)) {
+            return 'A' + value;
+        } else {
+            return 'a' + value;
+        }
+    }
+}
+void fb64_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
+    if (buffer_size <= 0) {
+        return;
+    }
+    if ((data_size != 16) || (buffer_size < 45)) {
+        buffer[0] = '\0';
+        return;
+    }
+    uint8_t prev = 0;
+    uint8_t value = 0;
+    size_t j = 0;
+    for (size_t i = 0; i < data_size; i++) {
+        value = (data[i] >> 4) & 0xf;
+        buffer[j] = fb64_char(prev, value);
+        j++;
+        prev = value;
+        value = (data[i] >> 0) & 0xf;
+        buffer[j] = fb64_char(prev, value);
+        j++;
+        prev = value;
+    }
+    for (size_t i = 32; i < 43; i++) {
+        value = (uint8_t)rng_random_s16(0, 0xf);
+        buffer[i] = fb64_char(prev, value);
+        prev = value;
+    }
+    buffer[43] = '=';
+    buffer[44] = '\0';
+}
+
+//-----------------------------------------------------------------------------
 // Serial
 //-----------------------------------------------------------------------------
 void serial_init() {
@@ -127,11 +221,14 @@ void rng_init() {
 int16_t rng_random_s16(int16_t min, int16_t max) {
     return (int16_t) random((long)min, (long)(max + 1));
 }
+uint8_t rng_random_u8() {
+    return (uint8_t)rng_random_s16(0, 255);
+}
 void rng_random(uint32_t *number) {
-    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ ((uint8_t)rng_random_s16(0, 255));
-    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ ((uint8_t)rng_random_s16(0, 255));
-    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ ((uint8_t)rng_random_s16(0, 255));
-    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ ((uint8_t)rng_random_s16(0, 255));
+    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ rng_random_u8();
+    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ rng_random_u8();
+    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ rng_random_u8();
+    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ rng_random_u8();
     ((uint16_t*)number)[0] ^= (uint16_t)millis();
 }
 
@@ -187,6 +284,13 @@ bool read_config(struct device_config_t *config) {
         }
     }
     return true;
+}
+
+//-----------------------------------------------------------------------------
+// Get master key
+//-----------------------------------------------------------------------------
+void get_master_key(void *key, size_t key_size) {
+    read_eeprom(0xff, key, key_size);
 }
 
 //-----------------------------------------------------------------------------
@@ -342,6 +446,7 @@ void interrupts_init() {
     {
         LOG_ERR(3,1);
     }
+    MASTER_KEY_SETUP_1_OF_4();
 }
 void interrupts_tick() {
     if(!vintc_run_loop(interrupts)) {
@@ -556,7 +661,7 @@ void nokia_init() {
 }
 
 //-----------------------------------------------------------------------------
-// aes
+// AES
 //-----------------------------------------------------------------------------
 #define AES_BLOCK_SIZE  (AES_BLOCKLEN)
 #define AES_KEY_SIZE    (AES_BLOCKLEN)
@@ -606,6 +711,7 @@ void screen_init() {
     if (!vg2d_set_draw_clear(&screen, screen_draw_clear_api, NULL)) {
         LOG_ERR(5,1);
     }
+    MASTER_KEY_SETUP_2_OF_4();
     if (!vg2d_set_draw_pixel(&screen, screen_draw_pixel_api, NULL)) {
         LOG_ERR(5,2);
     }
@@ -776,21 +882,8 @@ void score_format(char *buffer, size_t buffer_size, uint16_t score) {
     }
     sprintf(buffer, "%lu", ((unsigned long)score) * 100);
 }
-void score_token_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
-    // for now, just a hex token
-    if (buffer_size <= 0) {
-        return;
-    }
-    if (buffer_size < ((data_size * 2) + 1)) {
-        buffer[0] = '\0';
-        return;
-    }
-    for (size_t i = 0; i < data_size; i++) {
-        sprintf(&(buffer[i*2]), "%02x", data[i]);
-    }
-}
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
-    uint8_t key[16];
+    uint8_t key[AES_KEY_SIZE];
     uint8_t token[16];
     uint32_t token_device_id = 0;
     uint32_t token_score = ((uint32_t)score) * 100;
@@ -799,30 +892,53 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     memcpy(token + 0, &token_device_id, 4);
     memcpy(token + 4, &token_score, 4);
     memcpy(token + 8, &game, 1);
-    // 7 bytes left for authentication
-    // encode token
+    token[9] =  rng_random_u8();
+    token[10] =  rng_random_u8();
+    token[11] =  rng_random_u8();
+
+    // TODO token[12, 13, 14, 15] - crc'ish
+
+    // encrypt token
+#ifdef ENCRYPT_SCORE_TOKEN
     get_master_key(key, sizeof(key));
     aes_128_cbc_no_iv_single_block(key, token, sizeof(token));
-    score_token_encode(buffer, buffer_size, token, sizeof(token));
+#endif
+
+    // encode token
+    //hex_encode(buffer, buffer_size, token, sizeof(token));
+    fb64_encode(buffer, buffer_size, token, sizeof(token));
 }
 void score_upload(uint8_t game, uint16_t score) {
-    char url[100];
-    int fd = open("/text/score-url.txt");
+    char url[200];
+    int fd;
+
+    // get the upload url that ends with a query string e.g. "?t="
     memset(url, 0, sizeof(url));
-    if (fd >= 0) {
-        if (read(fd, url, sizeof(url)-1) > 10) {
-            score_token(url+strlen(url), (sizeof(url)-1)-strlen(url), game, score);
-            qrcode_display(url);
-            memset(url, 0, sizeof(url));
-            memcpy_P(url, F("UPLOAD SCORE "), sizeof("UPLOAD SCORE "));
-            screen_draw_string(0, SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-            url[0] = ' ';
-            score_format(url+1, sizeof(url)-1, score);
-            screen_draw_string(SCREEN_WIDTH-(strlen(url) * SCREEN_FONT_WIDTH), SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-            screen_swap_fb();
-        }
-        close(fd);
-    }
+    fd = open("/text/score-url.txt");
+    read(fd, url, sizeof(url)-1);
+    close(fd);
+
+    // append to the end of the url a generated token
+    score_token(url + strlen(url), (sizeof(url)-1) - strlen(url), game, score);
+
+    // draw the QR code for the url + link
+    qrcode_display(url);
+
+    // get the "UPLOAD SCORE" text (we don't want to point directly to a string here)
+    memset(url, 0, sizeof(url));
+    fd = open("/text/score-upload.txt");
+    read(fd, url, sizeof(url)-1);
+    close(fd);
+
+    // draw the "UPLOAD SCORE"
+    screen_draw_string(0, SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+
+    // draw the actually score under the QR code
+    score_format(url, sizeof(url)-1, score);
+    screen_draw_string(SCREEN_WIDTH-(strlen(url) * SCREEN_FONT_WIDTH), SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+
+    // render it to the screen
+    screen_swap_fb();
 }
 
 //-----------------------------------------------------------------------------
@@ -972,6 +1088,7 @@ void snake_button_press(void *ctx, button_key_t key, button_state_t state) {
 void snake_init(void *mem, size_t mem_size) {
     snkc_mem = (uint8_t*)mem;
     snkc_mem_size = mem_size;
+    MASTER_KEY_SETUP_3_OF_4();
 }
 void snake_start() {
     snake_direction = 0xff;
@@ -1323,6 +1440,7 @@ void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
 void viewer_init(void *mem, size_t mem_size) {
     vwrc_mem = (uint8_t*)mem;
     vwrc_mem_size = mem_size;
+    MASTER_KEY_SETUP_4_OF_4();
 }
 void viewer_start() {
 
@@ -1959,18 +2077,24 @@ void setup() {
 
     // IMAGE: BSIDESCBR
     screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-#ifdef DISPLAY_CONFIG_ON_BOOT
-    char msg[DEVICE_IMEI_SIZE];
+#ifdef DEBUG_DISPLAY_CONFIG_ON_BOOT
+    char msg[100];
     get_device_imei(msg, sizeof(msg));
-    screen_draw_string(0, 0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(0, SCREEN_FONT_HEIGHT*0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     uint32_t device_id;
     get_device_id(&device_id);
     sprintf(msg, "%lu", (unsigned long)device_id);
-    screen_draw_string(0, SCREEN_FONT_HEIGHT, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(0, SCREEN_FONT_HEIGHT*1, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    uint8_t key[AES_BLOCK_SIZE];
+    get_master_key(key, sizeof(key));
+    hex_encode(msg, sizeof(msg), key, sizeof(key));
+    msg[12] = '\0';
+    screen_draw_string(0, SCREEN_FONT_HEIGHT*2, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 #endif
     screen_swap_fb();
     delay(2000);
 
+#ifndef DEBUG_SCORE_TOKEN
     // IMAGE: NOPIA
     screen_draw_raw("/img/nopia.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
@@ -1988,9 +2112,15 @@ void setup() {
 
     // MENU
     main_menu();
+#endif
 }
 
 void loop() {
+#ifdef DEBUG_SCORE_TOKEN
+    score_upload(0x11, 0x3117);
+    delay(1000);
+#else
     interrupts_tick();
+#endif
 }
 
