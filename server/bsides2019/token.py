@@ -133,7 +133,8 @@ class Token(object):
     @classmethod
     def fb64_decode(cls, data):
         assert len(data) == 44
-        assert len(binascii.a2b_base64(data.replace(b'-',b'/'))) == 32
+        data = data.replace(b'-', b'/').replace(b' ', b'+')
+        assert len(binascii.a2b_base64(data)) == 32
         prev = 0
         out = b''
         for i in range(0, 32, 2):
