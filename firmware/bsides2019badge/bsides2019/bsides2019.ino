@@ -76,9 +76,9 @@ void set_master_key_impl(void) {
 #define NOKIA_5110_RST    5
 #define NOKIA_5110_BL     8
 
-#define GPIO_ARDUINO_UNO_DEV_BOARD
+//#define GPIO_ARDUINO_UNO_DEV_BOARD
 //#define GPIO_MODIFIED_DEC_PROTOTYPE
-//#define GPIO_PRODUCTION
+#define GPIO_PRODUCTION
 
 #ifdef GPIO_ARDUINO_UNO_DEV_BOARD
 #define BUTTON_LEFT       4
