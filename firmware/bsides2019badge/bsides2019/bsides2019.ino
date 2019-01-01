@@ -833,9 +833,7 @@ void goback_return(void) {
 static uint8_t *qrcode_mem = NULL;
 static uint8_t *qrcode_temp_mem = NULL;
 void qrcode_init(void *mem, size_t mem_size) {
-    if (mem_size < QR_MEM_SIZE) {
-        return;
-    }
+    mem_size = mem_size;
     qrcode_mem = (uint8_t*)mem;
     qrcode_temp_mem = nokia_screen_buffer; // dirty hack to save memory
 }
@@ -848,11 +846,10 @@ void qrcode_draw(const char *text) {
     }
     int size = qrcodegen_getSize(qrcode_mem);
     int x_offset = (SCREEN_WIDTH / 2) - (size / 2);
-    int y_offset = 0; //(SCREEN_HEIGHT / 2) - (size / 2);
     screen_draw_clear();
     for (int y = 0; y < size; y++) {
         for (int x = 0; x < size; x++) {
-            nokia_draw_pixel(x_offset + x, y_offset + y, qrcodegen_getModule(qrcode_mem, x, y) ? 1 : 0);
+            screen_draw_pixel(x_offset + x, y, qrcodegen_getModule(qrcode_mem, x, y));
         }
     }
 }

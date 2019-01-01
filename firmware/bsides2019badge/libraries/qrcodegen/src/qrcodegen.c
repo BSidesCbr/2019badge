@@ -21,6 +21,9 @@
  *   Software.
  */
 
+// Credits to:
+// https://github.com/nayuki/QR-Code-generator
+
 #include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
