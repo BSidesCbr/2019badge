@@ -77,8 +77,8 @@ void set_master_key_impl(void) {
 #define NOKIA_5110_BL     8
 
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
-//#define GPIO_MODIFIED_DEC_PROTOTYPE
-#define GPIO_PRODUCTION
+#define GPIO_MODIFIED_DEC_PROTOTYPE
+//#define GPIO_PRODUCTION
 
 #ifdef GPIO_ARDUINO_UNO_DEV_BOARD
 #define BUTTON_LEFT       4
@@ -353,77 +353,77 @@ void vfs_init() {
 // CSV file
 //-----------------------------------------------------------------------------
 ssize_t CSVC_API csv_read_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
-  int fd = (int)ctx;
-  if (fd < 0) {
-    LOG_ERR(2,0);
-    return -1;
-  }
-  if (offset != (size_t)lseek(fd, offset, SEEK_SET)) {
-    LOG_ERR(2,1);
-    return -1;
-  }
-  return read(fd, buffer, buffer_size);
+    int fd = (int)ctx;
+    if (fd < 0) {
+        LOG_ERR(2,0);
+        return -1;
+    }
+    if (offset != (size_t)lseek(fd, offset, SEEK_SET)) {
+        LOG_ERR(2,1);
+        return -1;
+    }
+    return read(fd, buffer, buffer_size);
 }
 size_t csv_file_size(int fd)
 {
-  size_t size = 0;
-  off_t offset = lseek(fd, 0, SEEK_END);
-  if (offset < 0) {
-    LOG_ERR(2,2);
-    return 0;
-  }
-  size = (size_t)offset;
-  offset = lseek(fd, 0, SEEK_SET);
-  if (offset != 0) {
-    LOG_ERR(2,3);
-    return 0;
-  }
-  return size;
+    size_t size = 0;
+    off_t offset = lseek(fd, 0, SEEK_END);
+    if (offset < 0) {
+        LOG_ERR(2,2);
+        return 0;
+    }
+    size = (size_t)offset;
+    offset = lseek(fd, 0, SEEK_SET);
+    if (offset != 0) {
+        LOG_ERR(2,3);
+        return 0;
+    }
+    return size;
 }
 size_t csv_row_count(int fd)
 {
-  size_t rows = 0;
-  if (!csvc_dimensions(csv_file_size(fd), csv_read_api, (void *)fd, &rows, NULL)) {
-    LOG_ERR(2,4);
-    return 0;
-  }
-  return rows;
+    size_t rows = 0;
+    if (!csvc_dimensions(csv_file_size(fd), csv_read_api, (void *)fd, &rows, NULL)) {
+        LOG_ERR(2,4);
+        return 0;
+    }
+    return rows;
 }
 void csv_for_each_cell(int fd, CsvcCellFn cell_fn, void *cell_ctx, char *buffer, size_t buffer_size) {
-  if (!csvc_for_each_cell(csv_file_size(fd), csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
-    LOG_ERR(2,7);
-    return;
-  }
+    if (!csvc_for_each_cell(csv_file_size(fd), csv_read_api, (void *)fd, cell_fn, cell_ctx, buffer, buffer_size)) {
+        LOG_ERR(2,7);
+        return;
+    }
 }
 void csv_read(int fd, size_t row, size_t column, char *buffer, size_t buffer_size) {
-  buffer[0] = '\0';
-  if (!csvc_read_cell(csv_file_size(fd), csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
-    LOG_ERR(2,10);
-  }
+    buffer[0] = '\0';
+    if (!csvc_read_cell(csv_file_size(fd), csv_read_api, (void *)fd, row, column, buffer, buffer_size)) {
+        LOG_ERR(2,10);
+    }
 }
 off_t csv_lseek(int fd, size_t row, size_t column) {
-  off_t offset = -1;
-  char unused = '\0';
-  csv_read(fd, row, column, &unused, sizeof(unused));
-  offset = lseek(fd, 0, SEEK_CUR);
-  if (offset < 1) {
-    return offset;
-  }
-  if (offset == lseek(fd, 0, SEEK_END)) {
-      return offset;
-  }
-  return lseek(fd, offset - sizeof(unused), SEEK_SET);
+    off_t offset = -1;
+    char unused = '\0';
+    csv_read(fd, row, column, &unused, sizeof(unused));
+    offset = lseek(fd, 0, SEEK_CUR);
+    if (offset < 1) {
+        return offset;
+    }
+    if (offset == lseek(fd, 0, SEEK_END)) {
+        return offset;
+    }
+    return lseek(fd, offset - sizeof(unused), SEEK_SET);
 }
 size_t csv_row_size(int fd, size_t row) {
-  off_t offset1 = csv_lseek(fd, row, 0);
-  off_t offset2 = csv_lseek(fd, row + 1, 0);
-  if (offset1 < 0) {
-    return 0;
-  }
-  if (offset2 < offset1) {
-    return 0;
-  }
-  return (size_t)(offset2 - offset1);
+    off_t offset1 = csv_lseek(fd, row, 0);
+    off_t offset2 = csv_lseek(fd, row + 1, 0);
+    if (offset1 < 0) {
+        return 0;
+    }
+    if (offset2 < offset1) {
+        return 0;
+    }
+    return (size_t)(offset2 - offset1);
 }
 
 //-----------------------------------------------------------------------------
