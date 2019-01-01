@@ -128,16 +128,26 @@ void yield(void) {
 //-----------------------------------------------------------------------------
 // Utils
 //-----------------------------------------------------------------------------
-void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
-    if (buffer_size <= 0) {
-        return;
+void dec_u32(char *buffer, uint32_t value, bool pad) {
+    // buffer is expected to be at least 11 bytes e.g. "4111222333\0"
+    uint8_t i = 0;
+    memset(buffer, '0', 10);
+    buffer[10] = '\0';
+    i = 10;
+    while (value > 0) {
+        i--;  // back fill from least significant decimal place
+        buffer[i] = ((char)(value % 10)) + '0';
+        value = value / 10;
     }
-    if (buffer_size < ((data_size * 2) + 1)) {
-        buffer[0] = '\0';
-        return;
-    }
-    for (size_t i = 0; i < data_size; i++) {
-        sprintf(&(buffer[i*2]), "%02x", data[i]);
+    if (!pad) {
+        i = 0;
+        while (buffer[i] == '0') {
+            i++;
+        }
+        if (i == 10) {
+            i--; // need at least 1 digit
+        }
+        memmove(buffer, &(buffer[i]), 11 - i);
     }
 }
 char fb64_char(uint8_t prev, uint8_t value) {
@@ -315,7 +325,15 @@ void get_device_imei(char *buffer, size_t buffer_size) {
         return;
     }
     get_device_id(&device_id);
-    sprintf(buffer, "353434%010lu", (unsigned long)device_id);
+    //sprintf(buffer, "353434%010lu", (unsigned long)device_id);
+    buffer[0] = '3';
+    buffer[1] = '5';
+    buffer[2] = '3';
+    buffer[3] = '4';
+    buffer[4] = '3';
+    buffer[5] = '4';
+    dec_u32(&(buffer[6]), device_id, true); // true == pad with zeros to 10
+    buffer[6 + 10] = '\0';
 }
 
 //-----------------------------------------------------------------------------
@@ -877,7 +895,8 @@ void score_format(char *buffer, size_t buffer_size, uint16_t score) {
         buffer[0] = '\0';
         return;
     }
-    sprintf(buffer, "%lu", ((unsigned long)score) * 100);
+    //sprintf(buffer, "%lu", ((unsigned long)score) * 100);
+    dec_u32(buffer, ((uint32_t)score) * 100, false); // don't pad with zeros
 }
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
     uint8_t key[AES_KEY_SIZE];
@@ -902,7 +921,6 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
 #endif
 
     // encode token
-    //hex_encode(buffer, buffer_size, token, sizeof(token));
     fb64_encode(buffer, buffer_size, token, sizeof(token));
 }
 void score_upload(uint8_t game, uint16_t score) {
@@ -2080,7 +2098,8 @@ void setup() {
     screen_draw_string(0, SCREEN_FONT_HEIGHT*0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     uint32_t device_id;
     get_device_id(&device_id);
-    sprintf(msg, "%lu", (unsigned long)device_id);
+    //sprintf(msg, "%lu", (unsigned long)device_id);
+    dec_u32(msg, device_id, false);
     screen_draw_string(0, SCREEN_FONT_HEIGHT*1, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     uint8_t key[AES_BLOCK_SIZE];
     get_master_key(key, sizeof(key));
