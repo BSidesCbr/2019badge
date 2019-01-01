@@ -1,6 +1,9 @@
 #ifndef _H_FONT_4X6_C_H_
 #define _H_FONT_4X6_C_H_
 
+// Credits to:
+// https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit
+
 #include <stdint.h>
 #include <limits.h>
 #include <stddef.h>
@@ -26,8 +29,6 @@ typedef short off_t;
 #error platform has exotic SIZE_MAX
 #endif
 
-// Credits to:
-// https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit
 
 #define F46C_WIDTH      4
 #define F46C_HEIGHT     6
