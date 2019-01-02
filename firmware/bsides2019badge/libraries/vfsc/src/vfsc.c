@@ -2,15 +2,23 @@
 
 #define VFSC_ADDR_ADD(addr,offset)  ((void*)(((uint8_t*)(addr)) + (offset)))
 
-static uint32_t vfsc_read_uint32_le(void *data, void *addr) {
+static vfsc_size_t vfsc_read_value(void *data, void *addr) {
     VFSC_DATA *vfs = (VFSC_DATA *)data;
-    uint32_t value = 0;
-    value |= ((uint32_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 0))) << 0 ) & 0x000000ff;
-    value |= ((uint32_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 1))) << 8 ) & 0x0000ff00;
-    value |= ((uint32_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 2))) << 16) & 0x00ff0000;
-    value |= ((uint32_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 3))) << 24) & 0xff000000;
+    vfsc_size_t value = 0;
+    value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 0))) << 0 ) & 0xff;
+    if (sizeof(vfsc_size_t) >= 2) {
+        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 1))) << 8 ) & 0xff00;
+    }
+    if (sizeof(vfsc_size_t) >= 4) {
+        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 2))) << 16) & 0x00ff0000;
+        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 3))) << 24) & 0xff000000;
+    }
     return value;
 }
+#define vfsc_read_reserved(data,addr)       vfsc_read_value(data,addr)
+#define vfsc_read_file_count(data,addr)     vfsc_read_value(data,addr)
+#define vfsc_read_file_hash(data,addr)      ((vfsc_hash_t)(vfsc_read_value(data,addr)))
+#define vfsc_read_file_size(data,addr)      vfsc_read_value(data,addr)
 
 int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx) {
     ssize_t fd = 0;
@@ -32,13 +40,13 @@ int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, Vfs
     memset(data, 0, size);
     ((VFSC_DATA*)data)->read_byte = read_byte;
     ((VFSC_DATA*)data)->read_byte_ctx = read_byte_ctx;
-    if (0 != vfsc_read_uint32_le(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_RESERVED))) {
+    if (0 != vfsc_read_reserved(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_RESERVED))) {
         // reserved not zero
         return -1;
     }
     ((VFSC_DATA*)data)->vfs_data = vfs_data;
     ((VFSC_DATA*)data)->vfs_data_size = vfs_data_size;
-    ((VFSC_DATA*)data)->vfs_file_count = vfsc_read_uint32_le(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_FILE_COUNT));
+    ((VFSC_DATA*)data)->vfs_file_count = vfsc_read_file_count(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_FILE_COUNT));
     ((VFSC_DATA*)data)->vfs_max_handles = ((size - sizeof(VFSC_DATA) - sizeof(VFSC_HANDLE_DATA)) / sizeof(VFSC_HANDLE_DATA));
     for (fd = 0; fd < ((VFSC_DATA*)data)->vfs_max_handles; fd++) {
         ((VFSC_DATA*)data)->vf_file_handle[fd].vf_index = VFSC_VF_INDEX_INVALID;
@@ -47,14 +55,14 @@ int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, Vfs
     return 0;
 }
 
-static ssize_t vfsc_vf_index(VFSC_DATA *vfs, uint32_t hash) {
+static ssize_t vfsc_vf_index(VFSC_DATA *vfs, vfsc_hash_t hash) {
     ssize_t vf_index = 0;
     void *addr = VFSC_ADDR_ADD(vfs->vfs_data, VFSC_VF_OFFSET_HASH_TABLE);
     for (vf_index = 0; vf_index < vfs->vfs_file_count; vf_index++) {
-        if (hash == vfsc_read_uint32_le(vfs, addr)) {
+        if (hash == vfsc_read_file_hash(vfs, addr)) {
             return vf_index;
         }
-        addr = VFSC_ADDR_ADD(addr, sizeof(uint32_t));
+        addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_hash_t));
     }
     return VFSC_VF_INDEX_INVALID;
 }
@@ -67,23 +75,23 @@ static ssize_t vfsc_vf_file(VFSC_DATA *vfs, ssize_t vf_index, void **data, size_
     addr = VFSC_ADDR_ADD(addr, VFSC_VF_OFFSET_HASH_TABLE);
 
     // move to data table
-    addr = VFSC_ADDR_ADD(addr, vfs->vfs_file_count * sizeof(uint32_t));
+    addr = VFSC_ADDR_ADD(addr, vfs->vfs_file_count * sizeof(vfsc_hash_t));
 
     // find the file
     while (vf_index > 0) {
         // jump over this file
-        file_size = (size_t)vfsc_read_uint32_le(vfs, addr);
-        addr = VFSC_ADDR_ADD(addr, sizeof(uint32_t) + file_size);
+        file_size = (size_t)vfsc_read_file_size(vfs, addr);
+        addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_size_t) + file_size);
         vf_index--;
     }
 
     // read the file size
     if (size) {
-        *size = (size_t)vfsc_read_uint32_le(vfs, addr);
+        *size = (size_t)vfsc_read_file_size(vfs, addr);
     }
 
     // move past the data size to the data
-    addr = VFSC_ADDR_ADD(addr, sizeof(uint32_t));
+    addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_size_t));
     if (data) {
         *data = addr;
     }
@@ -141,7 +149,7 @@ static ssize_t vfsc_get_handle(VFSC_DATA *vfs, ssize_t fd, VFSC_HANDLE_DATA **ha
     return 0;
 }
 
-int vfsc_open_hash(void *data, uint32_t hash) {
+int vfsc_open_hash(void *data, vfsc_hash_t hash) {
     ssize_t vf_index = VFSC_VF_INDEX_INVALID;
     VFSC_DATA *vfs = (VFSC_DATA *)data;
     if (NULL == vfs) {
@@ -222,7 +230,7 @@ int vfsc_close(void *data, int fd) {
 }
 
 void vfsc_fini(void *data) {
-    uint32_t size = sizeof(VFSC_DATA);
+    size_t size = sizeof(VFSC_DATA);
     if (NULL == data) {
         return;
     }

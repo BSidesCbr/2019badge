@@ -242,37 +242,63 @@ class VirtualFile(object):
 
 class VirtualFileSystem(object):
 
-    def __init__(self, files=None):
+    def __init__(self, files=None, value_fmt=None):
         self.files = files
         if not self.files:
             self.files = list()
+        self.value_fmt = value_fmt
 
     def size(self):
         size = 0
-        size += struct.calcsize('<I')  # reserved
-        size += struct.calcsize('<I')
+        size += struct.calcsize(self.value_fmt)  # reserved
+        size += struct.calcsize(self.value_fmt)
         for vf in self.files:
-            size += struct.calcsize('<I')
+            size += struct.calcsize(self.value_fmt)
         for vf in self.files:
-            size += struct.calcsize('<I') + vf.size()
+            size += struct.calcsize(self.value_fmt) + vf.size()
         return size
 
     def pack(self):
+        hash_mask = (1 << (struct.calcsize(self.value_fmt) * 8)) - 1
         used_hashes = list()
         data = list()
-        data += struct.pack('<I', 0)
-        data += struct.pack('<I', len(self.files))
+        data += struct.pack(self.value_fmt, 0)
+        data += struct.pack(self.value_fmt, len(self.files))
         for vf in self.files:
-            vf_hash = Hash.hash(vf.arc)
+            vf_hash = Hash.hash(vf.arc) & hash_mask
             assert vf_hash not in used_hashes
             used_hashes.append(vf_hash)
-            data += struct.pack('<I', vf_hash)
+            data += struct.pack(self.value_fmt, vf_hash)
         for vf in self.files:
             vf_size = vf.size()
             vf_data = vf.pack()
             assert len(vf_data) == vf_size
-            data += struct.pack('<I', vf_size) + vf_data
+            data += struct.pack(self.value_fmt, vf_size) + vf_data
         return data
+
+
+def get_value_fmt():
+    path = os.path.join(os.path.dirname(__file__), 'src', 'vfsc.h')
+    assert os.path.exists(path)
+    with open(path, 'rt') as handle:
+        for line in handle.readlines():
+            line = line.strip()
+            line = line.replace('\t', ' ')
+            while line.count('  ') > 0:
+                line = line.replace('  ', ' ')
+            line = line.strip()
+            if not line.endswith("vfsc_hash_t;"):
+                continue
+            if not line.startswith("typedef"):
+                continue
+            if not line.count(' ') == 2:
+                continue
+            c_type = line.split(' ')[1]
+            if 'uint32_t' == c_type:
+                return '<I'
+            if 'uint16_t' == c_type:
+                return '<H'
+    raise AssertionError("could not find/understand type for vfsc_hash_t")
 
 
 def main():
@@ -283,7 +309,7 @@ def main():
         print('NOTE: must use python 3.4.3 or up')
         sys.exit(1)
     fs_root = os.path.realpath(sys.argv[1])
-    fs = VirtualFileSystem()
+    fs = VirtualFileSystem(value_fmt=get_value_fmt())
     for root, folders, files in os.walk(fs_root):
         for filename in sorted(files):
             path = os.path.join(root, filename)

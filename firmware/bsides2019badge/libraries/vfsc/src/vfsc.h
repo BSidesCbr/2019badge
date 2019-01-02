@@ -27,6 +27,12 @@ typedef short off_t;
 #error platform has exotic SIZE_MAX
 #endif
 
+// VFS hash type
+typedef     uint32_t        vfsc_hash_t;
+
+// VFS size type (must match the type for hash i.e. be the same size)
+typedef     vfsc_hash_t     vfsc_size_t;
+
 // credits go to:
 // http://lolengine.net/blog/2011/12/20/cpp-constant-string-hash
 #define VFSC_H1(s,i,x)   (x*65599u+(uint8_t)s[(i)<(sizeof(s)-1)?(sizeof(s)-1)-1-(i):(sizeof(s)-1)])
@@ -34,15 +40,15 @@ typedef short off_t;
 #define VFSC_H16(s,i,x)  VFSC_H4(s,i,VFSC_H4(s,i+4,VFSC_H4(s,i+8,VFSC_H4(s,i+12,x))))
 #define VFSC_H64(s,i,x)  VFSC_H16(s,i,VFSC_H16(s,i+16,VFSC_H16(s,i+32,VFSC_H16(s,i+48,x))))
 #define VFSC_H256(s,i,x) VFSC_H64(s,i,VFSC_H64(s,i+64,VFSC_H64(s,i+128,VFSC_H64(s,i+192,x))))
-#define VFSC_HASH(s)     ((uint32_t)(VFSC_H256(s,0,0)^(VFSC_H256(s,0,0)>>16)))
+#define VFSC_HASH(s)     (vfsc_hash_t)(((uint32_t)(VFSC_H256(s,0,0)^(VFSC_H256(s,0,0)>>16))))
 
 #define VFSC_API
 typedef uint8_t(VFSC_API *VfscReadByteFn)(void *,void *);
 
 #define VFSC_VF_INDEX_INVALID       ((ssize_t)(-1))
-#define VFSC_VF_OFFSET_RESERVED     0
-#define VFSC_VF_OFFSET_FILE_COUNT   4
-#define VFSC_VF_OFFSET_HASH_TABLE   8
+#define VFSC_VF_OFFSET_RESERVED     (0 * sizeof(vfsc_size_t))
+#define VFSC_VF_OFFSET_FILE_COUNT   (1 * sizeof(vfsc_size_t))
+#define VFSC_VF_OFFSET_HASH_TABLE   (2 * sizeof(vfsc_size_t))
 
 typedef struct _VFSC_HANDLE_DATA {
     ssize_t vf_index;
@@ -68,7 +74,7 @@ typedef struct _VFSC_DATA {
 #define VFSC_SEEK_END    2
 
 int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx);
-int vfsc_open_hash(void *data, uint32_t hash);
+int vfsc_open_hash(void *data, vfsc_hash_t hash);
 #define vfsc_open(data, pathname)     vfsc_open_hash(data, VFSC_HASH(pathname))
 ssize_t vfsc_read(void *data, int fd, void *buf, size_t count);
 off_t vfsc_lseek(void *data, int fd, off_t offset, int whence);

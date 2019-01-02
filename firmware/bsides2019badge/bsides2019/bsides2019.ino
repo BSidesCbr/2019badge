@@ -593,7 +593,7 @@ void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
         nokia_screen_buffer[index] &=~ (1 << bit);
     }
 }
-void nokia_draw_raw_hash(uint32_t hash, size_t x, size_t y, size_t width, size_t height) {
+void nokia_draw_raw_hash(vfsc_hash_t hash, size_t x, size_t y, size_t width, size_t height) {
     int fd = open_hash(hash);
     if (fd < 0) {
       LOG_ERR(4,0);
@@ -1834,7 +1834,7 @@ void menu_init(void *mem, size_t mem_size) {
     tmnu_mem = (uint8_t*)mem;
     tmnu_mem_size = mem_size;
 }
-void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, size_t item, bool back_menu) {
+void menu_start_csv_hash(const void *title_flash, vfsc_hash_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, size_t item, bool back_menu) {
     size_t item_count = 0;
     int fd_and_back = -1;
 
@@ -1913,8 +1913,8 @@ void menu_stop() {
 // SCHEDULE MENU
 //-----------------------------------------------------------------------------
 static int schedule_csv_fd = -1;
-static uint32_t schedule_hash = 0;
-void schedule_menu_hash(uint32_t hash, size_t item);
+static vfsc_hash_t schedule_hash = 0;
+void schedule_menu_hash(vfsc_hash_t hash, size_t item);
 void schedule_menu_return(void *ctx) {
     schedule_menu_hash(0,(size_t)ctx);
 }
@@ -1932,7 +1932,7 @@ void schedule_menu_action(void *ctx, size_t item) {
     goback_return_to_me(schedule_menu_return, (void*)(item + 1));
     viewer_csv_row(schedule_csv_fd, item);
 }
-void schedule_menu_hash(uint32_t hash, size_t item) {
+void schedule_menu_hash(vfsc_hash_t hash, size_t item) {
     if ((schedule_csv_fd < 0) && (0 != hash)) {
         schedule_hash = hash;
         schedule_csv_fd = open_hash(schedule_hash);
