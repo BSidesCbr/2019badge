@@ -1698,15 +1698,21 @@ void dialer_start() {
 //-----------------------------------------------------------------------------
 // Tiny Menu
 //-----------------------------------------------------------------------------
-#define MENU_VIEW_WIDTH     56
-#define MENU_OFFSET_Y       9
-#define MENU_VIEW_HEIGHT    (SCREEN_HEIGHT - MENU_OFFSET_Y)
-#define MENU_OFFSET_X       ((SCREEN_WIDTH - MENU_VIEW_WIDTH) / 2)
-#define MENU_STR_OFFSET_X   2
-#define MENU_STR_OFFSET_Y   2
-#define MENU_MEM_SIZE       (TMNU_CALC_DATA_SIZE(84))
-static uint8_t *tmnu_mem = NULL;
-static size_t tmnu_mem_size = 0;
+#define MENU_WIDTH              60
+#define MENU_SCROLLBAR_WIDTH    3
+#define MENU_SCROLLBAR_SPACE    1
+#define MENU_VIEW_WIDTH         (MENU_WIDTH - MENU_SCROLLBAR_SPACE - MENU_SCROLLBAR_WIDTH)
+#define MENU_OFFSET_Y           9
+#define MENU_VIEW_HEIGHT        (SCREEN_HEIGHT - MENU_OFFSET_Y)
+#define MENU_OFFSET_X           ((SCREEN_WIDTH - MENU_VIEW_WIDTH) / 2)
+#define MENU_STR_OFFSET_X       2
+#define MENU_STR_OFFSET_Y       2
+#define MENU_MEM_SIZE           (TMNU_CALC_DATA_SIZE(84))
+#define MENU_SCROLLBAR_HEIGHT   MENU_VIEW_HEIGHT
+#define MENU_SCROLLBAR_X        (MENU_OFFSET_X + MENU_VIEW_WIDTH + MENU_SCROLLBAR_SPACE)
+#define MENU_SCROLLBAR_Y        (MENU_OFFSET_Y)
+static uint8_t *tmnu_mem =      NULL;
+static size_t tmnu_mem_size =   0;
 static size_t tmnu_int_handle = INT_INVALID_HANDLE;
 static char menu_title[12];
 static int menu_fd = -1;
@@ -1723,17 +1729,14 @@ void TMNU_API menu_calc_string_view_api(void *ctx, const char *str, size_t *widt
 }
 void TMNU_API menu_draw_string_api(void *ctx, size_t x, size_t y, const char *str, TMNU_BOOL selected) {
     ctx = ctx;
-    bool color = SCREEN_COLOR_BLACK;
-    bool bg = SCREEN_COLOR_WHITE;
+    bool color = (TMNU_TRUE != selected);
+    bool bg = (TMNU_TRUE == selected);
     if (TMNU_TRUE == selected) {
-        color = SCREEN_COLOR_WHITE;
-        bg = SCREEN_COLOR_BLACK;
-        screen_fill_rect(MENU_OFFSET_X + x, MENU_OFFSET_Y + y, MENU_VIEW_WIDTH - 2, 6 + ((MENU_STR_OFFSET_Y * 2) - 1), bg);
+        screen_fill_rect(MENU_OFFSET_X + x, MENU_OFFSET_Y + y, MENU_VIEW_WIDTH, 6 + ((MENU_STR_OFFSET_Y * 2) - 1), bg);
     }
     screen_draw_string(MENU_OFFSET_X + x + MENU_STR_OFFSET_X, MENU_OFFSET_Y + y + MENU_STR_OFFSET_Y, str, color, bg);
 }
 void TMNU_API menu_csv_item(void *ctx, size_t item, char *buffer, size_t buffer_size) {
-    ctx = ctx;
     int fd_and_back = (int)ctx;
     if (0 != (fd_and_back & 0x80)) {
         if (0 == item) {
@@ -1745,7 +1748,7 @@ void TMNU_API menu_csv_item(void *ctx, size_t item, char *buffer, size_t buffer_
         item--;
         fd_and_back &=~ 0x80;
     }
-    csv_read((int)fd_and_back, item, 0, buffer, buffer_size);
+    csv_read(fd_and_back, item, 0, buffer, buffer_size);
 }
 void menu_draw() {
     size_t item = 0;
@@ -1756,16 +1759,24 @@ void menu_draw() {
     size_t line_offset_x = 0;
     size_t line_width = 0;
     screen_draw_clear();
+
+    // draw title
     screen_draw_line(0, 5, SCREEN_WIDTH-1, 5, SCREEN_COLOR_BLACK);
     menu_calc_string_view_api(NULL, menu_title, &line_width, &line_offset_x);
     line_offset_x = (SCREEN_WIDTH - line_width) / 2;
     screen_fill_rect(line_offset_x, 0, line_width, 9, SCREEN_COLOR_WHITE);
     screen_draw_string(line_offset_x + MENU_STR_OFFSET_X, MENU_STR_OFFSET_Y, menu_title, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+
+    // draw dashboards
     dash_power_draw();
     dash_signal_draw();
+
+    // draw menu items
     if (!tmnu_draw_view(tmnu_mem)) {
         LOG_ERR(10,0);
     }
+
+    // get the values needed to draw the scrollbar
     if (!tmnu_get_item(tmnu_mem, &item)) {
         LOG_ERR(10,1);
     }
@@ -1775,42 +1786,41 @@ void menu_draw() {
     if (!tmnu_get_items_per_view(tmnu_mem, &items_per_view)) {
         LOG_ERR(10,3);
     }
+
+    // only draw scroll bar if there is enough items
     if (items_per_view < item_count) {
         // progress bars required
-        y = (MENU_VIEW_HEIGHT * item) / item_count;
-        h = (MENU_VIEW_HEIGHT * 1) / item_count;
-        screen_fill_rect(MENU_OFFSET_X + MENU_VIEW_WIDTH - 2, MENU_OFFSET_Y + y, 2, h, SCREEN_COLOR_BLACK);
+        y = (MENU_SCROLLBAR_HEIGHT * item) / item_count;
+        h = (MENU_SCROLLBAR_HEIGHT * 1) / item_count;
+        screen_draw_line(MENU_SCROLLBAR_X + (MENU_SCROLLBAR_WIDTH/2), MENU_OFFSET_Y, MENU_SCROLLBAR_X + (MENU_SCROLLBAR_WIDTH/2), MENU_OFFSET_Y + MENU_SCROLLBAR_HEIGHT, SCREEN_COLOR_BLACK);
+        screen_fill_rect(MENU_OFFSET_X + MENU_VIEW_WIDTH + MENU_SCROLLBAR_SPACE, MENU_OFFSET_Y + y, MENU_SCROLLBAR_WIDTH, h, SCREEN_COLOR_BLACK);
     }
     screen_swap_fb();
 }
 void menu_stop();
 void menu_button_press(void *ctx, button_key_t key, button_state_t state) {
-    ctx = ctx;
+    int fd_and_back = (int)ctx;
     if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-          menu_stop();
-          goback_return();
-          return;
+        if(0 != (fd_and_back & 0x80)) {
+            menu_stop();
+            goback_return();
+            return;
+        }
     }
     if (BUTTON_STATE_DOWN != state) {
         return;
     }
     switch(key) {
         case BUTTON_KEY_LEFT:
-            if (!tmnu_key_up(tmnu_mem)) {
-                LOG_ERR(10,4);
-            }
+            (void)tmnu_key_up(tmnu_mem);
             menu_draw();
             break;
         case BUTTON_KEY_RIGHT:
-            if (!tmnu_key_down(tmnu_mem)) {
-                LOG_ERR(10,5);
-            }
+            (void)tmnu_key_down(tmnu_mem);
             menu_draw();
             break;
         case BUTTON_KEY_OK:
-            if (!tmnu_key_enter(tmnu_mem)) {
-                LOG_ERR(10,6);
-            }
+            (void)tmnu_key_enter(tmnu_mem);
             break;
         default:
             break;
@@ -1824,7 +1834,7 @@ void menu_init(void *mem, size_t mem_size) {
     tmnu_mem = (uint8_t*)mem;
     tmnu_mem_size = mem_size;
 }
-void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, bool back_menu) {
+void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, size_t item, bool back_menu) {
     size_t item_count = 0;
     int fd_and_back = -1;
 
@@ -1833,8 +1843,8 @@ void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnS
         LOG_ERR(10,7);
     }
 
-    // view size (2 pixels for scroll bar)
-    if (!tmnu_set_view(tmnu_mem, MENU_VIEW_WIDTH - 2, MENU_VIEW_HEIGHT)) {
+    // view size (minus pixels for scroll bar)
+    if (!tmnu_set_view(tmnu_mem, MENU_VIEW_WIDTH, MENU_VIEW_HEIGHT)) {
         LOG_ERR(10,8);
     }
 
@@ -1866,7 +1876,9 @@ void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnS
 
     // count of menu items is the same as rows in the csv (+1 for the back option)
     item_count = csv_row_count(menu_fd);
-    item_count++;
+    if (back_menu) {
+        item_count++;
+    }
     if (!tmnu_set_menu_item_string(tmnu_mem, item_count, menu_csv_item, (void*)fd_and_back)) {
         LOG_ERR(10,12);
     }
@@ -1878,12 +1890,15 @@ void menu_start_csv_hash(const void *title_flash, uint32_t hash, TmnuMenuItemOnS
     tmnu_int_handle = interrupts_set(1000, menu_update, NULL);
 
     // Viewer buttons
-    button_set_callback(menu_button_press, NULL);
+    button_set_callback(menu_button_press, (void*)fd_and_back);
+
+    // Goto the item
+    tmnu_set_item(tmnu_mem, item);
 
     // Draw it now
     menu_draw();
 }
-#define menu_start_csv(title,pathname,action,action_ctx,back_menu)    menu_start_csv_hash(F(title),VFSC_HASH(pathname),action,action_ctx,back_menu)
+#define menu_start_csv(title,pathname,action,action_ctx,item,back_menu)    menu_start_csv_hash(F(title),VFSC_HASH(pathname),action,action_ctx,item,back_menu)
 void menu_stop() {
     interrupts_remove(tmnu_int_handle);
     tmnu_int_handle = INT_INVALID_HANDLE;
@@ -1893,19 +1908,15 @@ void menu_stop() {
     menu_fd = -1;
     memset(tmnu_mem, 0, tmnu_mem_size);
 }
-void menu_goto_item(size_t item) {
-    tmnu_set_item(tmnu_mem, item);
-    menu_draw();
-}
+
 //-----------------------------------------------------------------------------
 // SCHEDULE MENU
 //-----------------------------------------------------------------------------
 static int schedule_csv_fd = -1;
 static uint32_t schedule_hash = 0;
-void schedule_menu_hash(uint32_t hash);
+void schedule_menu_hash(uint32_t hash, size_t item);
 void schedule_menu_return(void *ctx) {
-    schedule_menu_hash(0);
-    menu_goto_item((size_t)ctx);
+    schedule_menu_hash(0,(size_t)ctx);
 }
 void schedule_menu_action(void *ctx, size_t item) {
     ctx = ctx;
@@ -1921,22 +1932,21 @@ void schedule_menu_action(void *ctx, size_t item) {
     goback_return_to_me(schedule_menu_return, (void*)(item + 1));
     viewer_csv_row(schedule_csv_fd, item);
 }
-void schedule_menu_hash(uint32_t hash) {
+void schedule_menu_hash(uint32_t hash, size_t item) {
     if ((schedule_csv_fd < 0) && (0 != hash)) {
         schedule_hash = hash;
         schedule_csv_fd = open_hash(schedule_hash);
     }
-    menu_start_csv_hash(F("Schedule"), schedule_hash, schedule_menu_action, NULL, true);
+    menu_start_csv_hash(F("Schedule"), schedule_hash, schedule_menu_action, NULL, item, true);
 }
-#define schedule_menu(pathname)   schedule_menu_hash(VFSC_HASH(pathname))
+#define schedule_menu(pathname,item)   schedule_menu_hash(VFSC_HASH(pathname),item)
 
 //-----------------------------------------------------------------------------
 // LINK MENU
 //-----------------------------------------------------------------------------
-void link_menu();
+void link_menu(size_t item);
 void link_menu_return(void *ctx) {
-    link_menu();
-    menu_goto_item((size_t)ctx);
+    link_menu((size_t)ctx);
 }
 void link_menu_action(void *ctx, size_t item) {
     ctx = ctx;
@@ -1954,17 +1964,16 @@ void link_menu_action(void *ctx, size_t item) {
     goback_return_to_me(link_menu_return, (void*)(item + 1));
     qrcode_display(url);
 }
-void link_menu() {
-    menu_start_csv("Links", "/text/links.csv", link_menu_action, NULL, true);
+void link_menu(size_t item) {
+    menu_start_csv("Links", "/text/links.csv", link_menu_action, NULL, item, true);
 }
 
 //-----------------------------------------------------------------------------
 // GAME MENU
 //-----------------------------------------------------------------------------
-void game_menu();
+void game_menu(size_t item);
 void game_menu_return(void *ctx) {
-     game_menu();
-     menu_goto_item((size_t)ctx);
+     game_menu((size_t)ctx);
 }
 void game_menu_action(void *ctx, size_t item) {
     ctx = ctx;
@@ -1985,17 +1994,16 @@ void game_menu_action(void *ctx, size_t item) {
             break;
     }
 }
-void game_menu() {
-    menu_start_csv("Games", "/text/games-menu.csv", game_menu_action, NULL, true);
+void game_menu(size_t item) {
+    menu_start_csv("Games", "/text/games-menu.csv", game_menu_action, NULL, item, true);
 }
 
 //-----------------------------------------------------------------------------
 // MAIN MENU
 //-----------------------------------------------------------------------------
-void main_menu();
+void main_menu(size_t item);
 void main_menu_return(void *ctx) {
-    main_menu();
-    menu_goto_item((size_t)ctx);
+    main_menu((size_t)ctx);
 }
 void main_menu_action(void *ctx, size_t item) {
     ctx = ctx;
@@ -2008,29 +2016,29 @@ void main_menu_action(void *ctx, size_t item) {
         case 1:
             menu_stop();
             goback_return_to_me(main_menu_return, (void*)item);
-            schedule_menu("/text/schedule-day1.csv");
+            schedule_menu("/text/schedule-day1.csv", 0);
             break;
         case 2:
             menu_stop();
             goback_return_to_me(main_menu_return, (void*)item);
-            schedule_menu("/text/schedule-day2.csv");
+            schedule_menu("/text/schedule-day2.csv", 0);
             break;
         case 3:
             menu_stop();
             goback_return_to_me(main_menu_return, (void*)item);
-            link_menu();
+            link_menu(0);
             break;
         case 4:
             menu_stop();
             goback_return_to_me(main_menu_return, (void*)item);
-            game_menu();
+            game_menu(0);
             break;
         case 5:
             break;
     }
 }
-void main_menu() {
-    menu_start_csv("NOPIA 1337", "/text/main-menu.csv", main_menu_action, NULL, false);
+void main_menu(size_t item) {
+    menu_start_csv("NOPIA 1337", "/text/main-menu.csv", main_menu_action, NULL, item, false);
 }
 
 //-----------------------------------------------------------------------------
@@ -2106,7 +2114,7 @@ void setup() {
     delay(1000);
 
     // MENU
-    main_menu();
+    main_menu(0);
 #endif
 }
 
