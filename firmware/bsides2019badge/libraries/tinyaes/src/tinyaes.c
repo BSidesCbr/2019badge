@@ -1,5 +1,7 @@
 #include "tinyaes.h"
 
+// Credits to https://github.com/kokke/tiny-AES-c
+
 /*
 
 This is an implementation of the AES algorithm, specifically ECB, CTR and CBC mode.

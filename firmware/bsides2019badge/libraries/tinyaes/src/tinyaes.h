@@ -1,7 +1,7 @@
 #ifndef _H_TINY_AES_H_
 #define _H_TINY_AES_H_
 
-// credits to GitHub/kokke/tiny-AES-c
+// Credits to https://github.com/kokke/tiny-AES-c
 
 #include <stdint.h>
 #include <stddef.h>  // size_t
