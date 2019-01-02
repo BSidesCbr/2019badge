@@ -99,6 +99,7 @@ TTRS_BOOL ttrs_key_right(void *data);
 TTRS_BOOL ttrs_key_down(void *data);
 TTRS_BOOL ttrs_key_drop(void *data);
 TTRS_BOOL ttrs_key_rotate(void *data);
+#define   ttrs_get_score(data)       (((TTRS_DATA*)data)->score)
 TTRS_BOOL ttrs_tick(void *data);
 TTRS_BOOL ttrs_fini(void *data);
 

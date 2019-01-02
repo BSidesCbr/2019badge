@@ -1137,40 +1137,45 @@ void snake_start() {
 //-----------------------------------------------------------------------------
 // Tetris
 //-----------------------------------------------------------------------------
-#define TETRIS_SQUARE_SIZE    2
-#define TETRIS_GRID_OFFSET    2
-#define TETRIS_GRID_WIDTH     10
-#define TETRIS_GRID_HEIGHT    ((SCREEN_HEIGHT - (TETRIS_GRID_OFFSET * 2)) / TETRIS_SQUARE_SIZE)
-#define TETRIS_DISPLAY_WIDTH  ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_WIDTH * TETRIS_SQUARE_SIZE))
-#define TETRIS_DISPLAY_HEIGHT ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_HEIGHT * TETRIS_SQUARE_SIZE))
-#define TETRIS_DISPLAY_OFFSET ((SCREEN_WIDTH / 2) - (TETRIS_DISPLAY_WIDTH / 2))
-#define TETRIS_NEXT_PIECE_OFFSET 2
-#define TETRIS_NEXT_PIECE_SQUARE_SIZE 4
-#define TETRIS_GAME_MEM_SIZE (TTRS_CALC_DATA_SIZE(TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
-static uint8_t *ttrs_mem = NULL;
-static size_t ttrs_mem_size = 0;
-static size_t ttrs_int_handle = INT_INVALID_HANDLE;
+#define TETRIS_SQUARE_SIZE              3
+#define TETRIS_GRID_OFFSET              2
+#define TETRIS_GRID_WIDTH               10
+#define TETRIS_GRID_HEIGHT              ((SCREEN_HEIGHT - (TETRIS_GRID_OFFSET * 2)) / TETRIS_SQUARE_SIZE)
+#define TETRIS_DISPLAY_WIDTH            ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_WIDTH * TETRIS_SQUARE_SIZE))
+#define TETRIS_DISPLAY_HEIGHT           ((TETRIS_GRID_OFFSET * 2) + (TETRIS_GRID_HEIGHT * TETRIS_SQUARE_SIZE))
+#define TETRIS_DISPLAY_OFFSET_X         0
+#define TETRIS_NEXT_PIECE_OFFSET_X      TETRIS_DISPLAY_OFFSET_X + TETRIS_DISPLAY_WIDTH + 10
+#define TETRIS_NEXT_PIECE_OFFSET_Y      5
+#define TETRIS_NEXT_PIECE_SQUARE_SIZE   5
+#define TETRIS_GAME_MEM_SIZE            (TTRS_CALC_DATA_SIZE(TETRIS_GRID_WIDTH, TETRIS_GRID_HEIGHT))
+static uint8_t *ttrs_mem =              NULL;
+static size_t ttrs_mem_size =           0;
+static size_t ttrs_int_handle =         INT_INVALID_HANDLE;
 void TTRS_API tetris_draw_clear(void *ctx) {
+    char score[SCORE_FORMAT_BUFFER_SIZE];
     ctx = ctx;
     screen_draw_clear();
+    screen_draw_rect(TETRIS_DISPLAY_OFFSET_X, 0, TETRIS_DISPLAY_WIDTH, TETRIS_DISPLAY_HEIGHT, SCREEN_COLOR_BLACK);
+    score_format(score, sizeof(score), ttrs_get_score(ttrs_mem));
+    screen_draw_string(SCREEN_WIDTH - screen_string_width(score), SCREEN_HEIGHT - screen_string_height(score), score, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 void TTRS_API tetris_draw_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
     ctx = ctx;
     piece = piece;
-    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
+    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET_X;
     y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
-    screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
+    screen_draw_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 void TTRS_API tetris_draw_next_piece(void *ctx, int16_t x, int16_t y, TTRS_PIECE_TYPE piece) {
     ctx = ctx;
     piece = piece;
-    x = TETRIS_NEXT_PIECE_OFFSET + (x * TETRIS_NEXT_PIECE_SQUARE_SIZE);
-    y = TETRIS_NEXT_PIECE_OFFSET + (y * TETRIS_NEXT_PIECE_SQUARE_SIZE);
+    x = TETRIS_NEXT_PIECE_OFFSET_X + (x * TETRIS_NEXT_PIECE_SQUARE_SIZE);
+    y = TETRIS_NEXT_PIECE_OFFSET_Y + (y * TETRIS_NEXT_PIECE_SQUARE_SIZE);
     screen_draw_rect(x, y, TETRIS_NEXT_PIECE_SQUARE_SIZE, TETRIS_NEXT_PIECE_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
 void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
     ctx = ctx;
-    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET;
+    x = TETRIS_GRID_OFFSET + (x * TETRIS_SQUARE_SIZE) + TETRIS_DISPLAY_OFFSET_X;
     y = TETRIS_GRID_OFFSET + (y * TETRIS_SQUARE_SIZE);
     screen_fill_rect(x, y, TETRIS_SQUARE_SIZE, TETRIS_SQUARE_SIZE, SCREEN_COLOR_BLACK);
 }
@@ -1190,10 +1195,6 @@ void TTRS_API tetris_game_over(void *ctx, uint16_t score) {
     goback_return_to_me(tetris_game_return, NULL);
     score_upload(SCORE_CODE_TETRIS, score);
 }
-void tetris_draw_end() {
-    screen_draw_rect(TETRIS_DISPLAY_OFFSET, 0, TETRIS_DISPLAY_WIDTH, TETRIS_DISPLAY_HEIGHT, SCREEN_COLOR_BLACK);
-    screen_swap_fb();
-}
 void VINTC_API tetris_tick(void *ctx) {
     ctx = ctx;
     screen_draw_clear();
@@ -1201,7 +1202,7 @@ void VINTC_API tetris_tick(void *ctx) {
         LOG_ERR(8,0);
     }
     if (INT_INVALID_HANDLE != ttrs_int_handle) {
-        tetris_draw_end();
+        screen_swap_fb();
     }
 }
 void tetris_stop() {
@@ -1218,31 +1219,23 @@ void tetris_button_press(void *ctx, button_key_t key, button_state_t state) {
         return;
     }
     if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_DOWN == state)) {
-        if(!ttrs_key_left(ttrs_mem)) {
-            LOG_ERR(8,1);
-        }
-        tetris_draw_end();
+        (void)ttrs_key_left(ttrs_mem);
+        screen_swap_fb();
         return;
     }
     if ((BUTTON_KEY_RIGHT == key) && (BUTTON_STATE_DOWN == state)) {
-        if(!ttrs_key_right(ttrs_mem)) {
-            LOG_ERR(8,2);
-        }
-        tetris_draw_end();
+        (void)ttrs_key_right(ttrs_mem);
+        screen_swap_fb();
         return;
     }
     if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_UP == state)) {
-        if(!ttrs_key_rotate(ttrs_mem)) {
-            LOG_ERR(8,4);
-        }
-        tetris_draw_end();
+        (void)ttrs_key_rotate(ttrs_mem);
+        screen_swap_fb();
         return;
     }
     if ((BUTTON_KEY_OK == key) && (BUTTON_STATE_HOLD == state)) {
-        if(!ttrs_key_drop(ttrs_mem)) {
-            LOG_ERR(8,3);
-        }
-        tetris_draw_end();
+        (void)ttrs_key_drop(ttrs_mem);
+        screen_swap_fb();
         return;
     }
 }
