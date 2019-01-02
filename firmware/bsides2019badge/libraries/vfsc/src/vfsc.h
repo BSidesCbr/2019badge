@@ -28,7 +28,7 @@ typedef short off_t;
 #endif
 
 // VFS hash type
-typedef     uint32_t        vfsc_hash_t;
+typedef     uint16_t        vfsc_hash_t;
 
 // VFS size type (must match the type for hash i.e. be the same size)
 typedef     vfsc_hash_t     vfsc_size_t;
