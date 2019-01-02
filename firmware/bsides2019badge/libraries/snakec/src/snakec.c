@@ -97,12 +97,6 @@ static uint16_t snkc_trail_encode_delta(int16_t xv, int16_t yv) {
 
 static void snkc_trail_appy_delta(void *data, uint16_t delta, int16_t *x, int16_t *y) {
     SNKC_DATA *snake = (SNKC_DATA *)data;
-    if (NULL == snake) {
-        return;
-    }
-    if ((NULL == x) || (NULL == y)) {
-        return;
-    }
     if (0 == delta)
     {
         // moving left

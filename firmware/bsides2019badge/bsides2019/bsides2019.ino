@@ -746,7 +746,10 @@ void screen_init() {
 #define screen_draw_pixel(x,y,color)          nokia_draw_pixel(x, y, color ? 1 : 0)
 #define screen_draw_char(x,y,c,color,bg)      vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0)
 #define screen_draw_string(x,y,s,color,bg)    vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0)
-
+size_t screen_string_width(const char *s) {
+    return ((size_t)(SCREEN_FONT_WIDTH * strlen(s)));
+}
+#define screen_string_height(s)               (SCREEN_FONT_HEIGHT)
 //-----------------------------------------------------------------------------
 // Dashboard Power and Signal
 //-----------------------------------------------------------------------------
@@ -950,7 +953,7 @@ void score_upload(uint8_t game, uint16_t score) {
 
     // draw the actually score under the QR code
     score_format(url, sizeof(url)-1, score);
-    screen_draw_string(SCREEN_WIDTH-(strlen(url) * SCREEN_FONT_WIDTH), SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_draw_string(SCREEN_WIDTH-screen_string_width(url), SCREEN_HEIGHT - screen_string_height(url), url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 
     // render it to the screen
     screen_swap_fb();
@@ -959,18 +962,22 @@ void score_upload(uint8_t game, uint16_t score) {
 //-----------------------------------------------------------------------------
 // Snake
 //-----------------------------------------------------------------------------
-#define SNAKE_SQUARE_SIZE   3
-#define SNAKE_GRID_OFFSET   2
-#define SNAKE_GRID_WIDTH    ((SCREEN_WIDTH - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
-#define SNAKE_GRID_HEIGHT   ((SCREEN_HEIGHT - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
-#define SNAKE_GAME_MEM_SIZE (SNKC_CALC_DATA_SIZE(SNAKE_GRID_WIDTH,SNAKE_GRID_HEIGHT))
-static uint8_t *snkc_mem = NULL;
-static size_t snkc_mem_size = 0;
-static size_t snkc_int_handle = INT_INVALID_HANDLE;
-static uint8_t snake_direction = 0xff;
+#define SNAKE_SQUARE_SIZE         3
+#define SNAKE_GRID_OFFSET         2
+#define SNAKE_GRID_WIDTH          ((SCREEN_WIDTH - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
+#define SNAKE_GRID_HEIGHT         ((SCREEN_HEIGHT - (SNAKE_GRID_OFFSET * 2)) / SNAKE_SQUARE_SIZE)
+#define SNAKE_GAME_MEM_SIZE       (SNKC_CALC_DATA_SIZE(SNAKE_GRID_WIDTH,SNAKE_GRID_HEIGHT))
+static uint8_t *snkc_mem =        NULL;
+static size_t snkc_mem_size =     0;
+static size_t snkc_int_handle =   INT_INVALID_HANDLE;
+static uint8_t snake_direction =  0xff;
 void SNKC_API snake_draw_clear_api(void *ctx) {
+    char score[SCORE_FORMAT_BUFFER_SIZE];
     ctx = ctx;
     screen_draw_clear();
+    screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
+    score_format(score, sizeof(score), snkc_get_score(snkc_mem));
+    screen_draw_string(SCREEN_WIDTH - screen_string_width(score) - 1, SCREEN_HEIGHT - screen_string_height(score) - 1, score, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
 }
 void SNKC_API snake_draw_snake_api(void *ctx, int16_t x, int16_t y) {
     ctx = ctx;
@@ -1000,17 +1007,13 @@ void SNKC_API snake_game_over_api(void *ctx, uint16_t score) {
     goback_return_to_me(snake_game_return, NULL);
     score_upload(SCORE_CODE_SNAKE, score);
 }
-void snake_draw_end() {
-    screen_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_COLOR_BLACK);
-    screen_swap_fb();
-}
 void VINTC_API snake_tick_api(void *ctx) {
     ctx = ctx;
     if(!snkc_tick(snkc_mem)) {
         LOG_ERR(7,0);
     }
     if (INT_INVALID_HANDLE != snkc_int_handle) {
-        snake_draw_end();
+        screen_swap_fb();
     }
 }
 void snake_stop() {
@@ -1020,84 +1023,67 @@ void snake_stop() {
 }
 void snake_button_press(void *ctx, button_key_t key, button_state_t state) {
     ctx = ctx;
-    int8_t new_direction = (int8_t)snake_direction;
     if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
-            // return to menu
-            snake_stop();
-            goback_return();
-            return;
+        // return to menu
+        snake_stop();
+        goback_return();
+        return;
     }
     if (BUTTON_STATE_DOWN != state) {
+        // only response to button down events
         return;
     }
     switch(key) {
         case BUTTON_KEY_LEFT:
-        if (0xff == snake_direction) {
-            new_direction = 0;  // start going LEFT
-        } else if ((1 == snake_direction) || (3 == snake_direction)) {
-            // up or down - go left
-            new_direction = 0;  // LEFT
-        } else {
-            // left or right - go up
-            new_direction = 1;  // UP
-        }
-        break;
+            // left or up
+            if (0xff == snake_direction) {
+                snake_direction = 0;  // start going LEFT
+            } else if ((1 == snake_direction) || (3 == snake_direction)) {
+                // up or down - go left
+                snake_direction = 0;  // LEFT
+            } else {
+                // left or right - go up
+                snake_direction = 1;  // UP
+            }
+            break;
         case BUTTON_KEY_RIGHT:
-        if (0xff == snake_direction) {
-            new_direction = 2;  // start going RIGHT
-        } else if ((0 == snake_direction) || (2 == snake_direction)) {
-            // left or right - go down
-            new_direction = 3;  // DOWN
-        } else {
-            // up or down - go right
-            new_direction = 2;  // RIGHT
-        }
-        break;
+            // right or down
+            if (0xff == snake_direction) {
+                snake_direction = 2;  // start going RIGHT
+            } else if ((0 == snake_direction) || (2 == snake_direction)) {
+                // left or right - go down
+                snake_direction = 3;  // DOWN
+            } else {
+                // up or down - go right
+                snake_direction = 2;  // RIGHT
+            }
+            break;
         case BUTTON_KEY_OK:
-        // rotate clockwise
-        new_direction++;
-        if (new_direction > 3) {
-            new_direction = 0;
-        }
-        break;
+            // rotate clockwise
+            snake_direction++;
+            break;
         default:
-        return;
-        break;
+            return;
+            break;
     }
-    if (new_direction < 0) {
-        new_direction = 3;
+    if (snake_direction > 3) {
+        snake_direction = 0;
     }
-    if (new_direction > 3) {
-        new_direction = 0;
-    }
-    snake_direction = (uint8_t)new_direction;
     switch(snake_direction) {
         case 0:
-        if(!snkc_key_left(snkc_mem)) {
-            LOG_ERR(7,1);
-        }
-        snake_draw_end();
-        break;
+            (void)snkc_key_left(snkc_mem);
+            break;
         case 1:
-        if(!snkc_key_up(snkc_mem)) {
-            LOG_ERR(7,2);
-        }
-        snake_draw_end();
-        break;
+            (void)snkc_key_up(snkc_mem);
+            break;
         case 2:
-        if(!snkc_key_right(snkc_mem)) {
-            LOG_ERR(7,3);
-        }
-        snake_draw_end();
-        break;
+            (void)snkc_key_right(snkc_mem);
+            break;
         case 3:
-        if(!snkc_key_down(snkc_mem)) {
-            LOG_ERR(7,4);
-        }
-        snake_draw_end();
-        break;
+            (void)snkc_key_down(snkc_mem);
+            break;
         default:
-        break;
+            break;
     }
 }
 void snake_init(void *mem, size_t mem_size) {
@@ -1118,7 +1104,7 @@ void snake_start() {
         LOG_ERR(7,6);
     }
 
-     // Snake will draw on the screen
+    // Snake will draw on the screen
     if (!snkc_set_draw_clear(snkc_mem, snake_draw_clear_api, &screen)) {
         LOG_ERR(7,7);
     }
@@ -1385,10 +1371,10 @@ ssize_t VWRC_API viewer_read_file_api(void *ctx, size_t offset, char *buffer, si
 void VWRC_API viewer_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
     ctx = ctx;
     if (width) {
-        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str));
+        *width = screen_string_width(str);
     }
     if (height) {
-        *height = SCREEN_FONT_HEIGHT;
+        *height = screen_string_height(str);
     }
 }
 void VWRC_API viewer_draw_string_api(void *ctx, size_t x, size_t y, const char *str) {
@@ -1734,11 +1720,11 @@ static int menu_fd = -1;
 void TMNU_API menu_calc_string_view_api(void *ctx, const char *str, size_t *width, size_t *height) {
     ctx = ctx;
     if (width) {
-        *width = (size_t)(SCREEN_FONT_WIDTH * strlen(str)); // 4x6 font used
+        *width = screen_string_width(str); // 4x6 font used
         *width += (MENU_STR_OFFSET_X * 2); // padding on sides
     }
     if (height) {
-        *height = SCREEN_FONT_HEIGHT;
+        *height = screen_string_height(str);
         *height += ((MENU_STR_OFFSET_Y * 2) - 1); // padding top/bottom
     }
 }

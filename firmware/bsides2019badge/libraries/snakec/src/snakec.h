@@ -62,6 +62,7 @@ SNKC_BOOL snkc_key_left(void *data);
 SNKC_BOOL snkc_key_up(void *data);
 SNKC_BOOL snkc_key_right(void *data);
 SNKC_BOOL snkc_key_down(void *data);
+#define  snkc_get_score(data)       (((SNKC_DATA*)data)->score)
 SNKC_BOOL snkc_tick(void *data);
 SNKC_BOOL snkc_fini(void *data);
 
