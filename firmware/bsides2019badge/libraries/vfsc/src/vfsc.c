@@ -1,17 +1,46 @@
 #include "vfsc.h"
 
-#define VFSC_ADDR_ADD(addr,offset)  ((void*)(((uint8_t*)(addr)) + (offset)))
-
-static vfsc_size_t vfsc_read_value(void *data, void *addr) {
+uint8_t vfsc_addr_read(void *data, vfsc_addr_t addr) {
     VFSC_DATA *vfs = (VFSC_DATA *)data;
+    return vfs->read_byte(vfs->read_byte_ctx, addr);
+}
+
+size_t vfsc_addr_offset(void *data, vfsc_addr_t addr) {
+    data = data;
+    return (size_t)addr;
+}
+
+size_t vfsc_key_offset(void *data, size_t offset) {
+    data = data;
+    return offset % VFSC_KEY_SIZE;
+}
+
+vfsc_addr_t vfsc_addr_ptr(void *data, size_t offset) {
+    data = data;
+    return (vfsc_addr_t)offset;
+}
+
+uint8_t vfsc_read_byte(void *data, vfsc_addr_t addr) {
+    uint8_t encb = vfsc_addr_read(data, addr);
+    size_t offset = vfsc_addr_offset(data, addr);
+    size_t keyoffset = vfsc_key_offset(data, offset);
+    vfsc_addr_t keyaddr = vfsc_addr_ptr(data, keyoffset);
+    uint8_t keyb = vfsc_addr_read(data, keyaddr);
+    keyb = keyb ^ (0xff - (uint8_t)(offset & 0xff));
+    keyb = keyb ^ 0xa5;
+    uint8_t valb = encb ^ keyb;
+    return valb;
+}
+
+static vfsc_size_t vfsc_read_value(void *data, vfsc_addr_t addr) {
     vfsc_size_t value = 0;
-    value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 0))) << 0 ) & 0xff;
+    value |= ((vfsc_size_t)(vfsc_read_byte(data, addr + 0)) << 0 ) & 0xff;
     if (sizeof(vfsc_size_t) >= 2) {
-        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 1))) << 8 ) & 0xff00;
+        value |= ((vfsc_size_t)(vfsc_read_byte(data, addr + 1)) << 8 ) & 0xff00;
     }
     if (sizeof(vfsc_size_t) >= 4) {
-        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 2))) << 16) & 0x00ff0000;
-        value |= ((vfsc_size_t)(vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(addr, 3))) << 24) & 0xff000000;
+        value |= ((vfsc_size_t)(vfsc_read_byte(data, addr + 2)) << 16) & 0x00ff0000;
+        value |= ((vfsc_size_t)(vfsc_read_byte(data, addr + 3)) << 24) & 0xff000000;
     }
     return value;
 }
@@ -20,15 +49,12 @@ static vfsc_size_t vfsc_read_value(void *data, void *addr) {
 #define vfsc_read_file_hash(data,addr)      ((vfsc_hash_t)(vfsc_read_value(data,addr)))
 #define vfsc_read_file_size(data,addr)      vfsc_read_value(data,addr)
 
-int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx) {
+int vfsc_init(void *data, size_t size, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx) {
     ssize_t fd = 0;
     if (!data) {
         return -1;
     }
     if (size < sizeof(VFSC_DATA)) {
-        return -1;
-    }
-    if (!vfs_data) {
         return -1;
     }
     if (vfs_data_size < 8) {
@@ -40,13 +66,12 @@ int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, Vfs
     memset(data, 0, size);
     ((VFSC_DATA*)data)->read_byte = read_byte;
     ((VFSC_DATA*)data)->read_byte_ctx = read_byte_ctx;
-    if (0 != vfsc_read_reserved(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_RESERVED))) {
+    if (0 != vfsc_read_reserved(data, VFSC_VF_OFFSET_RESERVED)) {
         // reserved not zero
         return -1;
     }
-    ((VFSC_DATA*)data)->vfs_data = vfs_data;
     ((VFSC_DATA*)data)->vfs_data_size = vfs_data_size;
-    ((VFSC_DATA*)data)->vfs_file_count = vfsc_read_file_count(data, VFSC_ADDR_ADD(vfs_data, VFSC_VF_OFFSET_FILE_COUNT));
+    ((VFSC_DATA*)data)->vfs_file_count = vfsc_read_file_count(data, VFSC_VF_OFFSET_FILE_COUNT);
     ((VFSC_DATA*)data)->vfs_max_handles = ((size - sizeof(VFSC_DATA) - sizeof(VFSC_HANDLE_DATA)) / sizeof(VFSC_HANDLE_DATA));
     for (fd = 0; fd < ((VFSC_DATA*)data)->vfs_max_handles; fd++) {
         ((VFSC_DATA*)data)->vf_file_handle[fd].vf_index = VFSC_VF_INDEX_INVALID;
@@ -57,31 +82,31 @@ int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, Vfs
 
 static ssize_t vfsc_vf_index(VFSC_DATA *vfs, vfsc_hash_t hash) {
     ssize_t vf_index = 0;
-    void *addr = VFSC_ADDR_ADD(vfs->vfs_data, VFSC_VF_OFFSET_HASH_TABLE);
+    vfsc_addr_t addr = VFSC_VF_OFFSET_HASH_TABLE;
     for (vf_index = 0; vf_index < vfs->vfs_file_count; vf_index++) {
         if (hash == vfsc_read_file_hash(vfs, addr)) {
             return vf_index;
         }
-        addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_hash_t));
+        addr += sizeof(vfsc_hash_t);
     }
     return VFSC_VF_INDEX_INVALID;
 }
 
 static ssize_t vfsc_vf_file(VFSC_DATA *vfs, ssize_t vf_index, void **data, size_t *size) {
     size_t file_size = 0;
-    void *addr = vfs->vfs_data;
+    vfsc_addr_t addr = 0;
 
     // move to hash table
-    addr = VFSC_ADDR_ADD(addr, VFSC_VF_OFFSET_HASH_TABLE);
+    addr += VFSC_VF_OFFSET_HASH_TABLE;
 
     // move to data table
-    addr = VFSC_ADDR_ADD(addr, vfs->vfs_file_count * sizeof(vfsc_hash_t));
+    addr += vfs->vfs_file_count * sizeof(vfsc_hash_t);
 
     // find the file
     while (vf_index > 0) {
         // jump over this file
         file_size = (size_t)vfsc_read_file_size(vfs, addr);
-        addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_size_t) + file_size);
+        addr += sizeof(vfsc_size_t) + file_size;
         vf_index--;
     }
 
@@ -91,7 +116,7 @@ static ssize_t vfsc_vf_file(VFSC_DATA *vfs, ssize_t vf_index, void **data, size_
     }
 
     // move past the data size to the data
-    addr = VFSC_ADDR_ADD(addr, sizeof(vfsc_size_t));
+    addr += sizeof(vfsc_size_t);
     if (data) {
         *data = addr;
     }
@@ -165,7 +190,7 @@ int vfsc_open_hash(void *data, vfsc_hash_t hash) {
 ssize_t vfsc_read(void *data, int fd, void *buf, size_t count) {
     VFSC_HANDLE_DATA *handle = NULL;
     size_t file_size = 0;
-    void *file_data = NULL;
+    vfsc_addr_t file_data = 0;
     size_t file_offset = 0;
     size_t byte_index = 0;
     VFSC_DATA *vfs = (VFSC_DATA *)data;
@@ -190,7 +215,7 @@ ssize_t vfsc_read(void *data, int fd, void *buf, size_t count) {
         count = file_size - (size_t)handle->vf_offset;
     }
     for (byte_index = 0; byte_index < count; byte_index++) {
-        *(((uint8_t*)buf) + byte_index) = vfs->read_byte(vfs->read_byte_ctx, VFSC_ADDR_ADD(file_data, handle->vf_offset + byte_index));
+        *(((uint8_t*)buf) + byte_index) = vfsc_read_byte(data, file_data + handle->vf_offset + byte_index);
     }
     handle->vf_offset += (ssize_t)count;
     return (ssize_t)count;

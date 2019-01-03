@@ -1,6 +1,7 @@
 import os
 import sys
 import struct
+import string
 import argparse
 
 class HexDataHeader(object):
@@ -12,6 +13,15 @@ class HexDataHeader(object):
         self.var_data_name = None
         self.var_data_size = None
         self.metadata = dict()
+
+    @classmethod
+    def to_ascii(cls, data_byte):
+        ascii_byte = chr(data_byte)
+        if ascii_byte not in string.printable:
+            return '.'
+        if ascii_byte in '\t\n\r\x0b\x0c':
+            return '.'
+        return ascii_byte
 
     def pack(self):
         # indent
@@ -67,12 +77,15 @@ class HexDataHeader(object):
         indent += 4
         text += ' ' * indent
         lines = list()
+        ascii_str = ''
         for data_byte in self.data:
+            ascii_str += self.to_ascii(data_byte)
             line = "'\\x{:02x}',".format(data_byte)
             col += 1
             if col == 16:
                 col = 0
-                line += '\n{}'.format(' ' * indent)
+                line += ' // {}\n{}'.format(ascii_str, ' ' * indent)
+                ascii_str = ''
             lines.append(line)
         text += ''.join(lines)
         text += '};\n'
@@ -277,6 +290,27 @@ class VirtualFileSystem(object):
         return data
 
 
+class CryptoAsObfusctation(object):
+
+    def __init__(self, data=None, key=None):
+        self.data = data
+        self.key = key
+
+    def pack(self):
+        new_data = list()
+        index = 0
+        new_data.append(self.key)
+        index += len(self.key)
+        for data_byte in self.data:
+            key = self.key[index % len(self.key)]
+            key = key ^ (0xff - (index & 0xff))
+            key = key ^ 0xa5
+            new_byte = data_byte ^ key
+            new_data.append(struct.pack('<B', new_byte))
+            index += 1
+        return b''.join(new_data)
+
+
 def get_value_fmt():
     path = os.path.join(os.path.dirname(__file__), 'src', 'vfsc.h')
     assert os.path.exists(path)
@@ -301,6 +335,26 @@ def get_value_fmt():
     raise AssertionError("could not find/understand type for vfsc_hash_t")
 
 
+def get_key_size():
+    path = os.path.join(os.path.dirname(__file__), 'src', 'vfsc.h')
+    assert os.path.exists(path)
+    with open(path, 'rt') as handle:
+        for line in handle.readlines():
+            line = line.strip()
+            line = line.replace('\t', ' ')
+            while line.count('  ') > 0:
+                line = line.replace('  ', ' ')
+            line = line.strip()
+            if not line.startswith("#define VFSC_KEY_SIZE"):
+                continue
+            if not line.count(' ') == 2:
+                continue
+            key_size = line.split(' ')[2]
+            key_size = int(key_size)
+            return key_size
+    raise AssertionError("could not find/understand value for VFSC_KEY_SIZE")
+
+
 def main():
     assert sys.version_info.major == 3
     assert sys.version_info.minor >= 4
@@ -322,10 +376,12 @@ def main():
             fs.files.append(vf)
     for vf in fs.files:
         print("{:08x} {} [{} bytes]".format(Hash.hash(vf.arc), vf.arc, vf.size()))
-    print("[total {} bytes]".format(fs.size()))
+    obfuscation = CryptoAsObfusctation()
+    obfuscation.data = fs.pack()
+    obfuscation.key = os.urandom(get_key_size())
     header = HexDataHeader()
-    header.data = fs.pack()
-    assert len(header.data) == fs.size()
+    header.data = obfuscation.pack()
+    print("[total {} bytes]".format(len(header.data)))
     header.var_header_guard = '_H_VFS_DATA_H_'
     header.var_data_name = 'vfs_data'
     header.var_data_size = 'vfs_size'

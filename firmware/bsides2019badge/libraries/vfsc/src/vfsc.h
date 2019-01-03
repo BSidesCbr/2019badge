@@ -27,11 +27,17 @@ typedef short off_t;
 #error platform has exotic SIZE_MAX
 #endif
 
+// Key size
+#define     VFSC_KEY_SIZE   19
+
 // VFS hash type
 typedef     uint16_t        vfsc_hash_t;
 
 // VFS size type (must match the type for hash i.e. be the same size)
 typedef     vfsc_hash_t     vfsc_size_t;
+
+// VFS addresses start at 0 (and are size_t)
+typedef     size_t          vfsc_addr_t;
 
 // credits go to:
 // http://lolengine.net/blog/2011/12/20/cpp-constant-string-hash
@@ -43,24 +49,23 @@ typedef     vfsc_hash_t     vfsc_size_t;
 #define VFSC_HASH(s)     (vfsc_hash_t)(((uint32_t)(VFSC_H256(s,0,0)^(VFSC_H256(s,0,0)>>16))))
 
 #define VFSC_API
-typedef uint8_t(VFSC_API *VfscReadByteFn)(void *,void *);
+typedef uint8_t(VFSC_API *VfscReadByteFn)(void *,vfsc_addr_t);
 
 #define VFSC_VF_INDEX_INVALID       ((ssize_t)(-1))
-#define VFSC_VF_OFFSET_RESERVED     (0 * sizeof(vfsc_size_t))
-#define VFSC_VF_OFFSET_FILE_COUNT   (1 * sizeof(vfsc_size_t))
-#define VFSC_VF_OFFSET_HASH_TABLE   (2 * sizeof(vfsc_size_t))
+#define VFSC_VF_OFFSET_RESERVED     (VFSC_KEY_SIZE + (0 * sizeof(vfsc_size_t)))
+#define VFSC_VF_OFFSET_FILE_COUNT   (VFSC_KEY_SIZE + (1 * sizeof(vfsc_size_t)))
+#define VFSC_VF_OFFSET_HASH_TABLE   (VFSC_KEY_SIZE + (2 * sizeof(vfsc_size_t)))
 
 typedef struct _VFSC_HANDLE_DATA {
     ssize_t vf_index;
     ssize_t vf_offset;
-    void* data;
+    vfsc_addr_t data;
     size_t size;
 } VFSC_HANDLE_DATA;
 
 typedef struct _VFSC_DATA {
     VfscReadByteFn read_byte;
     void *read_byte_ctx;
-    void *vfs_data;
     size_t vfs_data_size;
     ssize_t vfs_file_count;
     ssize_t vfs_max_handles;
@@ -73,7 +78,7 @@ typedef struct _VFSC_DATA {
 #define VFSC_SEEK_CUR    1
 #define VFSC_SEEK_END    2
 
-int vfsc_init(void *data, size_t size, void *vfs_data, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx);
+int vfsc_init(void *data, size_t size, size_t vfs_data_size, VfscReadByteFn read_byte, void *read_byte_ctx);
 int vfsc_open_hash(void *data, vfsc_hash_t hash);
 #define vfsc_open(data, pathname)     vfsc_open_hash(data, VFSC_HASH(pathname))
 ssize_t vfsc_read(void *data, int fd, void *buf, size_t count);

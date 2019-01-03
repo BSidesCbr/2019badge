@@ -16,9 +16,13 @@
 // Compile time features (mostly for space considerations)
 //-----------------------------------------------------------------------------
 //#define USE_SERIAL
-#define ENCRYPT_SCORE_TOKEN
+//#define DEBUG_VFS
+//#define DEBUG_SHOW_DIAG_ONLY
 //#define DEBUG_DISPLAY_CONFIG_ON_BOOT
 //#define DEBUG_SCORE_TOKEN
+//#define GPIO_ARDUINO_UNO_DEV_BOARD
+#define GPIO_MODIFIED_DEC_PROTOTYPE
+//#define GPIO_PRODUCTION
 
 //-----------------------------------------------------------------------------
 // Types
@@ -76,10 +80,6 @@ void set_master_key_impl(void) {
 #define NOKIA_5110_RST    5
 #define NOKIA_5110_BL     8
 
-//#define GPIO_ARDUINO_UNO_DEV_BOARD
-#define GPIO_MODIFIED_DEC_PROTOTYPE
-//#define GPIO_PRODUCTION
-
 #ifdef GPIO_ARDUINO_UNO_DEV_BOARD
 #define BUTTON_LEFT       4
 #define BUTTON_OK         3
@@ -128,6 +128,18 @@ void yield(void) {
 //-----------------------------------------------------------------------------
 // Utils
 //-----------------------------------------------------------------------------
+void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
+    if (buffer_size <= 0) {
+        return;
+    }
+    if (buffer_size < ((data_size * 2) + 1)) {
+        buffer[0] = '\0';
+        return;
+    }
+    for (size_t i = 0; i < data_size; i++) {
+        sprintf(&(buffer[i*2]), "%02x", data[i]);
+    }
+}
 void dec_u32(char *buffer, uint32_t value, bool pad) {
     // buffer is expected to be at least 11 bytes e.g. "4111222333\0"
     uint8_t i = 0;
@@ -340,12 +352,12 @@ void get_device_imei(char *buffer, size_t buffer_size) {
 // Virtual File System (VFS)
 //-----------------------------------------------------------------------------
 static uint8_t vfs[VFSC_VF_CALC_DATA_SIZE(8)];  // max 8 open handles
-uint8_t VFSC_API vfs_read_byte(void *ctx, void *addr) {
+uint8_t VFSC_API vfs_read_byte(void *ctx, vfsc_addr_t addr) {
     ctx = ctx;
-    return pgm_read_byte(addr);
+    return pgm_read_byte(vfs_data + addr);
 }
 void vfs_init() {
-    if (0 != vfsc_init(vfs, sizeof(vfs), (void*)vfs_data, (size_t)vfs_size, vfs_read_byte, NULL)) {
+    if (0 != vfsc_init(vfs, sizeof(vfs), (size_t)vfs_size, vfs_read_byte, NULL)) {
         LOG_ERR(1,0);
     }
 }
@@ -918,10 +930,8 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     // TODO token[12, 13, 14, 15] - crc'ish
 
     // encrypt token
-#ifdef ENCRYPT_SCORE_TOKEN
     get_master_key(key, sizeof(key));
     aes_128_cbc_no_iv_single_block(key, token, sizeof(token));
-#endif
 
     // encode token
     fb64_encode(buffer, buffer_size, token, sizeof(token));
@@ -2097,7 +2107,12 @@ void setup() {
     screen_swap_fb();
     delay(2000);
 
-#ifndef DEBUG_SCORE_TOKEN
+#ifdef DEBUG_SCORE_TOKEN
+    score_upload(0x11, 0x3117);
+    delay(1000);
+#endif
+
+#ifndef DEBUG_SHOW_DIAG_ONLY
     // IMAGE: NOPIA
     screen_draw_raw("/img/nopia.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
@@ -2119,10 +2134,7 @@ void setup() {
 }
 
 void loop() {
-#ifdef DEBUG_SCORE_TOKEN
-    score_upload(0x11, 0x3117);
-    delay(1000);
-#else
+#ifndef DEBUG_SHOW_DIAG_ONLY
     interrupts_tick();
 #endif
 }
