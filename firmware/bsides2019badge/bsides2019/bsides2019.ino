@@ -21,8 +21,8 @@
 //#define DEBUG_DISPLAY_CONFIG_ON_BOOT
 //#define DEBUG_SCORE_TOKEN
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
-#define GPIO_MODIFIED_DEC_PROTOTYPE
-//#define GPIO_PRODUCTION
+//#define GPIO_MODIFIED_DEC_PROTOTYPE
+#define GPIO_PRODUCTION
 
 //-----------------------------------------------------------------------------
 // Types
