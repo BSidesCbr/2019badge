@@ -1,3 +1,3 @@
-Text Viewer (C)
-===============
+Text Viewer
+===========
 Text viewer in C.

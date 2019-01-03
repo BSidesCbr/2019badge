@@ -1,4 +1,3 @@
-CSV parser (C)
-==============
-Tiny CSV file parser.
-
+CSV Parser
+==========
+Tiny CSV file parser in C.

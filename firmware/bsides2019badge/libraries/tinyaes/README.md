@@ -1,3 +1,3 @@
 Tiny AES
 ========
-Tiny AES encyrption library.
+Tiny AES encyrption library in C.
