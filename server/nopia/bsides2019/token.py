@@ -67,7 +67,7 @@ class Token(object):
                 if value < 10:
                     return chr(ord('0') + value)
                 elif value == 10:
-                    return '+'
+                    return '_'
                 elif value == 11:
                     return '-'
                 elif value > 11:
@@ -113,7 +113,7 @@ class Token(object):
             if 0 == (prev & 0x2):
                 if ord(letter) >= ord('0') and ord(letter) <= ord('9'):
                     return ord(letter) - ord('0')
-                elif letter == '+':
+                elif letter == '_':
                     return 10
                 elif letter == '-':
                     return 11
@@ -133,8 +133,8 @@ class Token(object):
     @classmethod
     def fb64_decode(cls, data):
         assert len(data) == 44
-        data = data.replace(b'-', b'/').replace(b' ', b'+')
-        assert len(binascii.a2b_base64(data)) == 32
+        data_tmp = data.replace(b'-', b'/').replace(b'_', b'+')
+        assert len(binascii.a2b_base64(data_tmp)) == 32
         prev = 0
         out = b''
         for i in range(0, 32, 2):
@@ -146,8 +146,8 @@ class Token(object):
             prev = value
             letter = chr(data[i + 1])
             value = cls.fb64_decode_char(prev, letter)
-            assert value >= 0
-            assert value <= 0xf
+            assert value >= 0, 'Letter "{}" ord={} decoded to {}'.format(letter, data[i + 1], value)
+            assert value <= 0xf, 'Letter "{}" ord={} decoded to {}'.format(letter, data[i + 1], value)
             value_low = value
             prev = value
             value = ((value_high << 4) & 0xf0) | ((value_low << 0) & 0x0f)

@@ -1,1 +1,1 @@
-http://10.1.1.100:3117/index.html?t=
+http://nopia.ap-southeast-2.elasticbeanstalk.com/index.html?t=

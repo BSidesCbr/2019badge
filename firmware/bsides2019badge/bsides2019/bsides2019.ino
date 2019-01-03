@@ -168,7 +168,7 @@ char fb64_char(uint8_t prev, uint8_t value) {
             if (value < 10) {
                 return '0' + value;
             } else if (value == 10) {
-                return '+';
+                return '_';
             } else if (value == 11) {
                 return '-';
             } else if (value > 11) {
