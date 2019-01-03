@@ -1303,12 +1303,12 @@ void tetris_start() {
 //-----------------------------------------------------------------------------
 #define TEXT_VIEWER_CHARS_PER_LINE    (SCREEN_WIDTH/SCREEN_FONT_WIDTH)
 #define TEXT_VIEWER_MEM_SIZE          (VWRC_CALC_DATA_SIZE(TEXT_VIEWER_CHARS_PER_LINE))
-static uint8_t *vwrc_mem = NULL;
-static size_t vwrc_mem_size = 0;
-static size_t vwrc_data_size = 0;
-static const char *vwrc_c_str = 0;
-static off_t vwrc_csv_offset = 0;
-static ssize_t vwrc_csv_row_size = 0;
+static uint8_t *vwrc_mem =            NULL;
+static size_t vwrc_mem_size =         0;
+static size_t vwrc_data_size =        0;
+static const char *vwrc_c_str =       0;
+static off_t vwrc_csv_offset =        0;
+static ssize_t vwrc_csv_row_size =    0;
 ssize_t VWRC_API viewer_read_c_str_api(void *ctx, size_t offset, char *buffer, size_t buffer_size) {
     ctx = ctx;
     if (buffer_size >= vwrc_data_size) {
@@ -1405,10 +1405,10 @@ void viewer_draw() {
         LOG_ERR(9,3);
     }
     if (rows_per_view < row_count) {
-      // progress bars required
-      y = (SCREEN_HEIGHT * row) / row_count;
-      h = (SCREEN_HEIGHT * rows_per_view) / row_count;
-      screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
+        // progress bars required
+        y = (SCREEN_HEIGHT * row) / row_count;
+        h = (SCREEN_HEIGHT * rows_per_view) / row_count;
+        screen_fill_rect(SCREEN_WIDTH - 2, y, 2, h, SCREEN_COLOR_BLACK);
     }
 }
 void viewer_button_press(void *ctx, button_key_t key, button_state_t state) {
