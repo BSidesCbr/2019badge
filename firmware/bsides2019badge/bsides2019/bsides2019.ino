@@ -457,10 +457,10 @@ size_t csv_row_size(int fd, size_t row) {
 }
 
 //-----------------------------------------------------------------------------
-// Interrupt timers (virtual)
+// Interrupt timers (Virtual)
 //-----------------------------------------------------------------------------
-#define TMR_INTERRUPTS_MAX 8
-#define INT_INVALID_HANDLE ((size_t)VINTC_INVALID_HANDLE)
+#define TMR_INTERRUPTS_MAX    8
+#define INT_INVALID_HANDLE    ((size_t)VINTC_INVALID_HANDLE)
 static uint8_t interrupts[VINTC_CALC_DATA_SIZE(TMR_INTERRUPTS_MAX)] = {0};
 uint32_t VINTC_API interrupts_get_tick_count_api(void *ctx) {
     ctx = ctx;
