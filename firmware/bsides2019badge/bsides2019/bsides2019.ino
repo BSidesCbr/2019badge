@@ -752,16 +752,17 @@ void screen_init() {
 #define screen_draw_raw(pathname,x,y,w,h)     nokia_draw_raw(pathname,x,y,w,h)
 #define screen_swap_fb()                      nokia_swap_fb()
 #define screen_draw_clear()                   nokia_draw_clear()
-#define screen_fill_rect(x,y,w,h,color)       vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0)
-#define screen_draw_rect(x,y,w,h,color)       vg2d_draw_rect(&screen, x, y, w, h, color ? 1 : 0)
-#define screen_draw_line(x0,y0,x1,y1,color)   vg2d_draw_line(&screen, x0, y0, x1, y1, color ? 1 : 0)
-#define screen_draw_pixel(x,y,color)          nokia_draw_pixel(x, y, color ? 1 : 0)
-#define screen_draw_char(x,y,c,color,bg)      vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0)
-#define screen_draw_string(x,y,s,color,bg)    vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0)
+#define screen_fill_rect(x,y,w,h,color)       (void)vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0)
+#define screen_draw_rect(x,y,w,h,color)       (void)vg2d_draw_rect(&screen, x, y, w, h, color ? 1 : 0)
+#define screen_draw_line(x0,y0,x1,y1,color)   (void)vg2d_draw_line(&screen, x0, y0, x1, y1, color ? 1 : 0)
+#define screen_draw_pixel(x,y,color)          (void)nokia_draw_pixel(x, y, color ? 1 : 0)
+#define screen_draw_char(x,y,c,color,bg)      (void)vg2d_draw_char(&screen, x, y, c, color ? 1 : 0, bg ? 1 : 0)
+#define screen_draw_string(x,y,s,color,bg)    (void)vg2d_draw_string(&screen, x, y, s, color ? 1 : 0, bg ? 1 : 0)
 size_t screen_string_width(const char *s) {
     return ((size_t)(SCREEN_FONT_WIDTH * strlen(s)));
 }
 #define screen_string_height(s)               (SCREEN_FONT_HEIGHT)
+
 //-----------------------------------------------------------------------------
 // Dashboard Power and Signal
 //-----------------------------------------------------------------------------
