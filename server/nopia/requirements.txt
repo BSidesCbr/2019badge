@@ -1,1 +1,2 @@
 pycrypto>=2.6.1
+mysqlclient>=1.2.5

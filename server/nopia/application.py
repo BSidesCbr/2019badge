@@ -7,6 +7,8 @@ import logging.handlers
 from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server, WSGIServer, WSGIRequestHandler
 from bsides2019.token import Token
+from bsides2019.scoredb import ScoreDb
+from bsides2019.html import HtmlTable
 
 # Create logger
 logger = logging.getLogger(__name__)
@@ -34,6 +36,30 @@ class NoReversLookupsWSGIRequestHandler(WSGIRequestHandler):
     def address_string(self):
         return str(self.client_address[0])
 
+
+def debug_mode():
+    try:
+        if not 'NOPIA_DEBUG' in os.environ:
+            return False
+        if os.environ['NOPIA_DEBUG'].lower() != 'true':
+            return False
+    except:
+        return False
+    return True
+
+def db_example(environ, start_response):
+    data = 'db'
+    with ScoreDb(version=0) as score:
+        #score.add_score('foobar1', 'test', 100)
+        #score.add_score('foobar2', 'test',200)
+        #score.add_score('foobar3', 'test', 300)
+        data += ' ' + score.sql_version()
+        data += ' ' + HtmlTable(score.score_board('test')).html()
+        #score.add_name('foobar1', 'lalala')
+        data += ' ' + HtmlTable(score.name_table()).html()
+    start_response('200 OK', [('Content-Type','text/html'), ('Content-Length',str(len(data)))])
+    return [data]
+
 def err404_app(environ, start_response, err='nopia'):
     data = err.encode('ascii')
     start_response('404 Not Found', [('Content-Type','text/html'), ('Content-Length',str(len(data)))])
@@ -51,10 +77,15 @@ def bsides2019_app(environ, start_response):
 def application(environ, start_response):
     err = ''
     try:
+        if environ['PATH_INFO'].endswith('db.html'):
+            return db_example(environ, start_response)
         return bsides2019_app(environ, start_response)
     except Exception as error:
         import traceback
-        err = str(traceback.format_exc())
+        if debug_mode():
+            err = str(traceback.format_exc())
+        else:
+            err = 'nopia'
     return err404_app(environ, start_response, err)
 
 if __name__ == '__main__':
