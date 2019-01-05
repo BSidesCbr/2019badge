@@ -80,8 +80,30 @@ def error_app(environ, start_response, err='nopia'):
     start_response('200 OK', [('Content-Type','text/html'), ('Content-Length',str(len(data)))])
     return [data]
 
-def success_app(environ, start_response, text):
-    text = '<html><head></head><body>{}</body></html>'.format(text)
+def success_app(environ, start_response, html):
+    form = None
+    if html.count('<form') == 1 and html.endswith('</form>'):
+        html, form = html.split('<form')
+        form = '<form' + form
+    text = ''
+    text += '<html><head>'
+    text += '<link rel="stylesheet" type="text/css" href="/static/screen.css" />'
+    text += '</head><body class="noisy">'
+    text += '<div class="frame">'
+    if form:
+        # adding the effects makes it un-clickable on phones :(
+        text += html
+        text += form
+    else:
+        text += '<div class="piece output">'
+        text += html
+        text += '<div class="piece scanlines">'
+        text += '</div>'
+        text += '<div class="piece glow">'
+        text += '</div>'
+        text += '</div>'
+    text += '</div>'
+    text += '</body></html>'
     data = text.encode('ascii')
     start_response('200 OK', [('Content-Type','text/html'), ('Content-Length',str(len(data)))])
     return [data]
@@ -89,10 +111,11 @@ def success_app(environ, start_response, text):
 def score_board_app(environ, start_response):
     text = ''
     with ScoreDb(version=get_version()) as score:
-        text += '<h1>{}</h1>'.format('Snake')
-        text += HtmlTable(format_score_board(score.score_board('snake', count=get_score_row_count(environ)))).html()
-        text += '<h1>{}</h1>'.format('Tetris')
-        text += HtmlTable(format_score_board(score.score_board('tetris', count=get_score_row_count(environ)))).html()
+        g1 = '<h1>{}</h1>'.format('Snake')
+        g1 += HtmlTable(format_score_board(score.score_board('snake', count=get_score_row_count(environ)))).html()
+        g2 = '<h1>{}</h1>'.format('Tetris')
+        g2 += HtmlTable(format_score_board(score.score_board('tetris', count=get_score_row_count(environ)))).html()
+        text = HtmlTable([[g1, g2]]).html()
     return success_app(environ, start_response, text)
 
 def submit_name_form_app(environ, start_response, qs_token, token):
@@ -100,7 +123,8 @@ def submit_name_form_app(environ, start_response, qs_token, token):
     text += '<h1>{}</h1><p>{} {} pts</p>'.format(token.imei, token.game, token.score)
     text += '<form id="name_form" "/index.html" method="get">'
     text += '<input type="hidden" name="s" value="{}" />'.format(qs_token)
-    text += '<input type="text" name="n" value="" />'
+    text += '<label for="name">Your name:</label>'
+    text += '<input id="name" type="text" name="n" value="" />'
     text += '<button type="submit" form="name_form" value="Submit">Submit</button>'
     text += '</form>'
     return success_app(environ, start_response, text)
