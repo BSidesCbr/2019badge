@@ -20,7 +20,7 @@ class Token(object):
         return "353434{:010d}".format(self.device_id)
 
     @property
-    def game_name(self):
+    def game(self):
         if self.game_code == self.SCORE_CODE_DEBUG:
             return 'debug'
         elif self.game_code == self.SCORE_CODE_SNAKE:
@@ -31,7 +31,7 @@ class Token(object):
             return hex(self.game_code)
 
     def __str__(self):
-        return '{}\n{} {} pts'.format(self.imei, self.game_name, self.score)
+        return '{}\n{} {} pts'.format(self.imei, self.game, self.score)
 
     @classmethod
     def decode_key(cls, key):
@@ -168,6 +168,13 @@ class Token(object):
         obj.device_id = struct.unpack('<I', data[0: 4])[0]
         obj.score = struct.unpack('<I', data[4: 8])[0]
         obj.game_code = struct.unpack('<B', data[8: 9])[0]
+        assert obj.score % 100 == 0  # scores are a multiple of 100
+        if obj.game == 'snake':
+            assert obj.score <= 364 * 100  # 14 x 26 = 364 squares, this is the max
+        elif obj.game == 'tetris':
+            assert obj.score <= 57600 * 100 # (60 * 60 * 24 * 2) / 3 seconds per 100 points == 57600
+        else :
+            assert obj.score == 0
         return obj
 
     def encode(self, key):

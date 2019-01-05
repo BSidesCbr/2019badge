@@ -1,4 +1,5 @@
 import os
+import uuid
 import datetime
 import MySQLdb
 
@@ -46,7 +47,11 @@ class ScoreDb(object):
         try:
             cursor.execute(cmd)
             if count == 1:
-                results = [cursor.fetchone()]
+                results = cursor.fetchone()
+                if results:
+                    results = [results]
+                else:
+                    results = list()
             else:
                 results = cursor.fetchall()
             list(results)
@@ -59,6 +64,10 @@ class ScoreDb(object):
             new_results.append(list(row))
         results = new_results
         return results
+
+    def sql_drop_table(self, name):
+        sql = "DROP TABLE IF EXISTS {}".format(name)
+        self.sql_write(sql)
 
     def sql_table_name(self, name):
         table_name = '{}_V{}'.format(name, self.version).upper()
@@ -90,6 +99,23 @@ class ScoreDb(object):
                 TIMESTAMP   DATETIME
             )""".format(self.score_table_name(game))
         self.sql_write(sql)
+        # add in defaults scores
+        if len(self.score_board(game, count=1)) == 0:
+            for i in range(0, 20):
+                num1 = int(i % 10)
+                num2 = int(i / 10)
+                digit1 = chr(ord('0') + num1)
+                digit2 = chr(ord('0') + num2)
+                imei = '3534'
+                for _ in range(0, 6):
+                    imei += str(int(os.urandom(1)[0] % 100)).rjust(2, '0')
+                name = chr(ord('A') + i) * 3
+                assert len(imei) == 16
+                assert len(name) == 3
+                score = (20 - i) * 100
+                assert score % 100 == 0
+                self.add_score(imei, game, score)
+                self.add_name(imei, name)
 
     def create_name_table(self):
         sql = """
@@ -119,6 +145,21 @@ class ScoreDb(object):
         self.sql_write(sql)
 
     def add_score(self, imei, game, score):
+        # try to avoid duplicates of the same imei score
+        # timestamp will help to resolve these later if it does happen
+        sql = """
+            SELECT IMEI, SCORE FROM {} WHERE IMEI = '{}' AND SCORE = {}
+        """.format(
+            self.score_table_name(game),
+            imei,
+            score
+        )
+        results = self.sql_read(sql)
+        if len(results) > 0:
+            # don't add another imei/score of the same values
+            # user already has this score recorded
+            return
+        # add score
         timestamp = datetime.datetime.now()
         timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
         sql = """
@@ -127,7 +168,8 @@ class ScoreDb(object):
                 SCORE,
                 TIMESTAMP
             )
-            VALUES('{}', {}, '{}' )""".format(
+            VALUES('{}', {}, '{}')
+            """.format(
                 self.score_table_name(game),
                 imei,
                 score,
@@ -140,16 +182,16 @@ class ScoreDb(object):
         tname = self.name_table_name()
         sql = """
             SELECT
-                IF({}.NAME IS NULL, {}.IMEI, {}.NAME) as IMEI,
+                {}.IMEI as IMEI,
+                {}.NAME as NAME,
                 {}.SCORE as SCORE,
                 {}.TIMESTAMP as TIMESTAMP
             FROM {}
             LEFT JOIN {} ON {}.IMEI = {}.IMEI
             ORDER BY SCORE DESC, TIMESTAMP ASC
         """.format(
-            tname,  # is name null?
-            tscore, # no name, use imei
-            tname,  # use name as imei
+            tscore, # imei
+            tname,  # name
             tscore, # score
             tscore, # timestamp
             tscore,
@@ -157,12 +199,7 @@ class ScoreDb(object):
             tscore,
             tname,
         )
-        results = self.sql_read(sql, count=count)
-        new_rows = list()
-        for row in results:
-            new_rows.append((row[0], str(row[1]) + ' pts'))
-        results = new_rows
-        return results
+        return self.sql_read(sql, count=count)
 
     def name_table(self, count=None):
         sql = """
@@ -170,8 +207,12 @@ class ScoreDb(object):
         """.format(self.name_table_name())
         return self.sql_read(sql, count=count)
 
+    def reset_db(self):
+        self.sql_drop_table(self.name_table_name())
+        self.sql_drop_table(self.score_table_name('snake'))
+        self.sql_drop_table(self.score_table_name('tetris'))
+
     def init_db(self):
         self.create_name_table()
-        self.create_score_table('test')
-        #self.create_score_table('snake')
-        #self.create_score_table('tetris')
+        self.create_score_table('snake')
+        self.create_score_table('tetris')
