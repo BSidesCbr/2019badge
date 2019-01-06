@@ -131,6 +131,49 @@ void yield(void) {
 #endif
 
 //-----------------------------------------------------------------------------
+// CRC32 - Credit to: http://home.thep.lu.se/~bjorn/crc/
+//-----------------------------------------------------------------------------
+uint32_t crc32_for_byte(uint32_t r) {
+    for(int j = 0; j < 8; ++j) {
+        r = (r & 1? 0: (uint32_t)0xEDB88320L) ^ r >> 1;
+    }
+    return r ^ (uint32_t)0xFF000000L;
+}
+void crc32(const void *data, size_t n_bytes, uint32_t* crc) {
+    *crc = 0;
+    for(size_t i = 0; i < n_bytes; ++i) {
+        *crc = crc32_for_byte((uint8_t)*crc ^ ((uint8_t*)data)[i]) ^ *crc >> 8;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Random
+//-----------------------------------------------------------------------------
+void rng_init() {
+    // not great, got a better idea?
+    // got a better idea??
+    randomSeed(analogRead(0) ^ analogRead(1) ^ analogRead(2) ^ analogRead(3));
+}
+int16_t rng_random_s16(int16_t min, int16_t max) {
+    return (int16_t) random((long)min, (long)(max + 1));
+}
+uint8_t rng_random_u8() {
+    return (uint8_t)rng_random_s16(0, 255);
+}
+void rng_random(uint32_t *number) {
+    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ rng_random_u8();
+    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ rng_random_u8();
+    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ rng_random_u8();
+    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ rng_random_u8();
+    ((uint16_t*)number)[0] ^= (uint16_t)millis();
+}
+void rngcpy(void *dst, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        ((uint8_t*)dst)[i] = rng_random_u8();
+    }
+}
+
+//-----------------------------------------------------------------------------
 // Utils
 //-----------------------------------------------------------------------------
 void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
@@ -196,6 +239,7 @@ char fb64_char(uint8_t prev, uint8_t value) {
     }
 }
 void fb64_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
+    uint8_t temp[21];
     if (buffer_size <= 0) {
         return;
     }
@@ -203,24 +247,23 @@ void fb64_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t d
         buffer[0] = '\0';
         return;
     }
+    memcpy(&(temp[0]), data, 16);
+    rngcpy(&(temp[16]), 1);
+    crc32(&(temp[0]), 17, (uint32_t*)(&(temp[17])));
     uint8_t prev = 0;
     uint8_t value = 0;
     size_t j = 0;
-    for (size_t i = 0; i < data_size; i++) {
-        value = (data[i] >> 4) & 0xf;
+    for (size_t i = 0; i < 21; i++) {
+        value = (temp[i] >> 4) & 0xf;
         buffer[j] = fb64_char(prev, value);
         j++;
         prev = value;
-        value = (data[i] >> 0) & 0xf;
+        value = (temp[i] >> 0) & 0xf;
         buffer[j] = fb64_char(prev, value);
         j++;
         prev = value;
     }
-    for (size_t i = 32; i < 43; i++) {
-        value = (uint8_t)rng_random_s16(0, 0xf);
-        buffer[i] = fb64_char(prev, value);
-        prev = value;
-    }
+    buffer[42] = buffer[prev];
     buffer[43] = '=';
     buffer[44] = '\0';
 }
@@ -235,28 +278,6 @@ void serial_init() {
         // wait
     }
 #endif
-}
-
-//-----------------------------------------------------------------------------
-// Random
-//-----------------------------------------------------------------------------
-void rng_init() {
-    // not great, got a better idea?
-    // got a better idea??
-    randomSeed(analogRead(0) ^ analogRead(1) ^ analogRead(2) ^ analogRead(3));
-}
-int16_t rng_random_s16(int16_t min, int16_t max) {
-    return (int16_t) random((long)min, (long)(max + 1));
-}
-uint8_t rng_random_u8() {
-    return (uint8_t)rng_random_s16(0, 255);
-}
-void rng_random(uint32_t *number) {
-    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ rng_random_u8();
-    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ rng_random_u8();
-    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ rng_random_u8();
-    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ rng_random_u8();
-    ((uint16_t*)number)[0] ^= (uint16_t)millis();
 }
 
 //-----------------------------------------------------------------------------
@@ -974,11 +995,10 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     memcpy(token + 0, &token_device_id, 4);
     memcpy(token + 4, &token_score, 4);
     memcpy(token + 8, &game, 1);
-    token[9] =  rng_random_u8();
-    token[10] =  rng_random_u8();
-    token[11] =  rng_random_u8();
+    rngcpy(&(token[9]), 3);
 
-    // TODO token[12, 13, 14, 15] - crc'ish
+    // crc32 inside token
+    crc32(token, 12, (uint32_t*)&token[12]);
 
     // encrypt token
     get_master_key(key, sizeof(key));

@@ -1,5 +1,6 @@
 import os
 import sys
+import zlib
 import struct
 import binascii
 from Crypto.Cipher import AES
@@ -61,6 +62,10 @@ class Token(object):
         return aes.encrypt(data)
 
     @classmethod
+    def crc32(cls, data):
+        return zlib.crc32(data) % 2**32
+
+    @classmethod
     def fb64_encode_char(cls, prev, value):
         if 0 != (prev & 0x1):
             if 0 == (prev & 0x2):
@@ -87,10 +92,13 @@ class Token(object):
     def fb64_encode(cls, data):
         out = ''
         assert len(data) == 16
+        data = data + os.urandom(1)
+        data = data + struct.pack('<I', cls.crc32(data))
+        assert len(data) == 21
         prev = 0
         value = 0
         j = 0
-        for i in range(0, len(data)):
+        for i in range(0, 21):
             value = (data[i] >> 4) & 0xf
             out += cls.fb64_encode_char(prev, value)
             j += 1
@@ -99,10 +107,7 @@ class Token(object):
             out += cls.fb64_encode_char(prev, value)
             j += 1
             prev = value
-        for i in range(32, 43):
-            value = os.urandom(1)[0] & 0xf
-            out += cls.fb64_encode_char(prev, value)
-            prev = value
+        out += out[prev]
         out += '='
         assert len(out) == 44
         return out
@@ -137,7 +142,7 @@ class Token(object):
         assert len(binascii.a2b_base64(data_tmp)) == 32
         prev = 0
         out = b''
-        for i in range(0, 32, 2):
+        for i in range(0, 42, 2):
             letter = chr(data[i])
             value = cls.fb64_decode_char(prev, letter)
             assert value >= 0
@@ -154,8 +159,13 @@ class Token(object):
             assert value >= 0
             assert value <= 0xff
             out += struct.pack('<B', value)
-        assert len(out) == 16
-        return out
+        assert len(out) == 21
+        assert data[prev] == data[42], "{} == {}".format(chr(data[prev]), data[42])
+        assert ord('=') == data[43], "{} == {}".format('=', data[43])
+        expected = cls.crc32(out[:17])
+        result = struct.unpack('<I', out[17: 21])[0]
+        assert expected == result, "{} == {}".format(hex(expected), hex(result))
+        return out[:16]
 
     @classmethod
     def decode(cls, key, data):
@@ -168,12 +178,17 @@ class Token(object):
         obj.device_id = struct.unpack('<I', data[0: 4])[0]
         obj.score = struct.unpack('<I', data[4: 8])[0]
         obj.game_code = struct.unpack('<B', data[8: 9])[0]
+        expected = cls.crc32(data[:12])
+        result = struct.unpack('<I', data[12: 16])[0]
+        assert expected == result, "{} == {}".format(hex(expected), hex(result))
         assert obj.score % 100 == 0  # scores are a multiple of 100
         if obj.game == 'snake':
             assert obj.score <= 364 * 100  # 14 x 26 = 364 squares, this is the max
         elif obj.game == 'tetris':
             assert obj.score <= 57600 * 100 # (60 * 60 * 24 * 2) / 3 seconds per 100 points == 57600
-        else :
+        elif obj.game == 'debug':
+            pass  # ignore for debug
+        else:
             assert obj.score == 0
         return obj
 
@@ -181,7 +196,7 @@ class Token(object):
         key = self.decode_key(key)
         data = struct.pack('<IIB', self.device_id, self.score, self.game_code)
         data += os.urandom(3)
-        data = data + b'\x00' * (self.BLOCK_SIZE - len(data))
+        data += struct.pack('<I', self.crc32(data))
         assert len(data) == 16
         data = self.encrypt_aes_128_cbc_no_iv_single_block(key, data)
         text = self.fb64_encode(data)
