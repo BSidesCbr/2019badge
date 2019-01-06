@@ -20,9 +20,14 @@
 //#define DEBUG_SHOW_DIAG_ONLY
 //#define DEBUG_DISPLAY_CONFIG_ON_BOOT
 //#define DEBUG_SCORE_TOKEN
+//#define DEBUG_BATTERY_LEVEL
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
 //#define GPIO_MODIFIED_DEC_PROTOTYPE
 #define GPIO_PRODUCTION
+#define BATTERY_LEVEL_1_LOW     2500
+#define BATTERY_LEVEL_2         2700
+#define BATTERY_LEVEL_3         2800
+#define BATTERY_LEVEL_4_HIGH    2900
 
 //-----------------------------------------------------------------------------
 // Types
@@ -764,6 +769,51 @@ size_t screen_string_width(const char *s) {
 #define screen_string_height(s)               (SCREEN_FONT_HEIGHT)
 
 //-----------------------------------------------------------------------------
+// Power / Battery Level
+//-----------------------------------------------------------------------------
+long readVcc() {
+    // Credits to:
+    // https://www.instructables.com/id/Secret-Arduino-Voltmeter/
+  
+    // Read 1.1V reference against AVcc
+    // set the reference to Vcc and the measurement to the internal 1.1V reference
+    #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+        ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+        ADMUX = _BV(MUX5) | _BV(MUX0) ;
+    #else
+        ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    #endif
+    
+    delay(2); // Wait for Vref to settle
+    ADCSRA |= _BV(ADSC); // Start conversion
+    while (bit_is_set(ADCSRA,ADSC)); // measuring
+    
+    uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+    uint8_t high = ADCH; // unlocks both
+    
+    long result = (high<<8) | low;
+    
+    result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+    return result; // Vcc in millivolts
+}
+uint8_t power_get_battery_level()
+{ 
+    int voltage = (int)readVcc();
+    uint8_t level = 4;
+    if (voltage < BATTERY_LEVEL_1_LOW) {
+        level = 0;
+    } else if (voltage < BATTERY_LEVEL_2) {
+        level = 1;
+    } else if (voltage < BATTERY_LEVEL_3) {
+        level = 2;
+    } else if (voltage < BATTERY_LEVEL_4_HIGH) {
+        level = 3;
+    }
+    return level;
+}
+
+//-----------------------------------------------------------------------------
 // Dashboard Power and Signal
 //-----------------------------------------------------------------------------
 static uint8_t dash_power;
@@ -804,7 +854,7 @@ void dash_draw(bool left) {
 #define dash_power_draw()     dash_draw(false)
 void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
-    dash_power = rng_random_s16(0, 4);
+    dash_power = power_get_battery_level();
     dash_signal = rng_random_s16(0, 4);
 }
 void dash_init() {
@@ -2135,6 +2185,15 @@ void setup() {
 }
 
 void loop() {
+#ifdef DEBUG_BATTERY_LEVEL
+    size_t volt = (size_t)readVcc();
+    char msg[40];
+    memset(msg, 0, sizeof(msg));
+    dec_u32(msg, (uint32_t)volt, true);
+    screen_draw_string(0, 0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    screen_swap_fb();
+    delay(2000);
+#endif
 #ifndef DEBUG_SHOW_DIAG_ONLY
     interrupts_tick();
 #endif
