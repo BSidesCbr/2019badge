@@ -19,7 +19,7 @@ class HexDataHeader(object):
         ascii_byte = chr(data_byte)
         if ascii_byte not in string.printable:
             return '.'
-        if ascii_byte in '\t\n\r\x0b\x0c':
+        if ascii_byte in '\t\n\r\x0b\x0c\\/':
             return '.'
         return ascii_byte
 
