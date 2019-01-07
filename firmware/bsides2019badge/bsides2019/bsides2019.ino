@@ -38,6 +38,24 @@ typedef void(*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 
 typedef bool(*WriteEepromFn)(int ee, const void *buffer, size_t buffer_size);
 typedef void(*SetMasterKeyImplFn)(void);
+
+//-----------------------------------------------------------------------------
+// Get flags
+//-----------------------------------------------------------------------------
+#define FLAG_PRE  "cybears{"
+#define FLAG_0    "cybears{y0ur_d3v1c3_1s_un7rus73d}"
+#define FLAG_1    "cybears{n0_bar5}"
+#define FLAG_SIZE (sizeof(FLAG_0))
+void flagcpy(char *dst, uint8_t flag) {
+    memcpy_P(dst, F(FLAG_0), sizeof(FLAG_0));
+    if (flag == 1) {
+        memcpy(&(dst[sizeof(FLAG_PRE)-1]), "n0", 2);
+        memcpy(&(dst[sizeof(FLAG_PRE)-1+2]), "_b", 2);
+        memcpy(&(dst[sizeof(FLAG_PRE)-1+2+2]), "ar", 2);
+        memcpy(&(dst[sizeof(FLAG_PRE)-1+2+2+2]), "5}", 3);
+    }
+}
+
 //-----------------------------------------------------------------------------
 // Master key, don't lose it!
 //-----------------------------------------------------------------------------
@@ -412,6 +430,9 @@ size_t csv_row_size(int fd, size_t row) {
 #define STR_ID_GAMES_TITLE            STD_ID_LINE_NO(9)
 #define STR_ID_DIAL_CODE_0000_VER     STD_ID_LINE_NO(10)
 #define STR_ID_DIAL_CODE_06_IMEI      STD_ID_LINE_NO(11)
+#define STR_ID_DIAL_CODE_3524_FLAG    STD_ID_LINE_NO(12)
+#define STR_ID_DIAL_CODE_1800_FLAG    STD_ID_LINE_NO(13)
+#define STR_ID_FLAG                   STD_ID_LINE_NO(14)
 
 char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
     if ((!buffer) || (buffer_size <= 1)) {
@@ -885,6 +906,10 @@ uint8_t power_get_battery_level()
 //-----------------------------------------------------------------------------
 static uint8_t dash_power;
 static uint8_t dash_signal;
+#define DASH_FLAG_DELAY_SEC   30
+static uint8_t dash_mode_counter = 0;
+static bool dash_mode_flag = false;
+static uint8_t dash_mode_nibble = 0;
 void dash_draw(bool left) {
     size_t x = 0;
     size_t dx = 0;
@@ -897,18 +922,18 @@ void dash_draw(bool left) {
     screen_fill_rect(x, 0, 6, 38, SCREEN_COLOR_WHITE);
     x += dx;
     x += dx;
-    if (value >= 4) {
+    if (value & 0x08) {
         screen_fill_rect(x, 0, 4, 7, SCREEN_COLOR_BLACK);
     }
     x += dx;
-    if (value >= 3) {
+    if (value & 0x04) {
         screen_fill_rect(x, 8, 3, 7, SCREEN_COLOR_BLACK);
     }
     x += dx;
-    if (value >= 2) {
+    if (value & 0x02) {
         screen_fill_rect(x, 16, 2, 7, SCREEN_COLOR_BLACK);
     }
-    if (value >= 1) {
+    if (value & 0x01) {
         screen_fill_rect(x, 24, 2, 6, SCREEN_COLOR_BLACK);
     }
     if (!left) {
@@ -919,10 +944,36 @@ void dash_draw(bool left) {
 }
 #define dash_signal_draw()    dash_draw(true)
 #define dash_power_draw()     dash_draw(false)
+void dash_flag_reset() {
+    dash_mode_counter = 0;
+    dash_mode_flag = false;
+}
 void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
     dash_power = power_get_battery_level();
+    dash_power = (1 << dash_power) - 1;
     dash_signal = rng_random_s16(0, 4);
+    dash_signal = (1 << dash_signal) - 1;
+
+    if (dash_mode_flag) {
+        char dash_flag[FLAG_SIZE];
+        flagcpy(dash_flag, 1);
+        dash_signal = dash_flag[dash_mode_nibble >> 1];
+        if (0 == (dash_mode_nibble & 0x1)) {
+            dash_signal = dash_signal >> 4;
+        }
+        dash_mode_nibble++;
+        if (dash_mode_nibble >= (sizeof(FLAG_1)*2)) {
+            dash_flag_reset();
+        }
+    } else {
+        dash_mode_counter++;
+        if (dash_mode_counter >= DASH_FLAG_DELAY_SEC) {
+            dash_mode_counter = 0;
+            dash_mode_nibble = 0;
+            dash_mode_flag = true;
+        }
+    }
 }
 void dash_init() {
     (void)interrupts_set(1000, dash_update, NULL);
@@ -1726,11 +1777,13 @@ void dialer_return(void *ctx) {
     }
     dialer_start();
 }
-#define DIAL_CODE_COUNT         2
+#define DIAL_CODE_COUNT         4
 #define DIAL_CODE_CALC_SIZE(n)  (n*(sizeof(uint8_t)+sizeof(uint8_t)))
 const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
     STR_ID_DIAL_CODE_0000_VER, 0x00,
     STR_ID_DIAL_CODE_06_IMEI, 0x00,
+    STR_ID_DIAL_CODE_3524_FLAG, STR_ID_FLAG,
+    STR_ID_DIAL_CODE_1800_FLAG, STR_ID_FLAG,
 };
 void dialer_action(const char *number) {
     char dialer_code[20];
@@ -2036,6 +2089,7 @@ static int schedule_csv_fd = -1;
 static vfsc_hash_t schedule_hash = 0;
 void schedule_menu_hash(vfsc_hash_t hash, size_t item);
 void schedule_menu_return(void *ctx) {
+    dash_flag_reset();
     schedule_menu_hash(0,(size_t)ctx);
 }
 void schedule_menu_action(void *ctx, size_t item) {
@@ -2066,6 +2120,7 @@ void schedule_menu_hash(vfsc_hash_t hash, size_t item) {
 //-----------------------------------------------------------------------------
 void link_menu(size_t item);
 void link_menu_return(void *ctx) {
+    dash_flag_reset();
     link_menu((size_t)ctx);
 }
 void link_menu_action(void *ctx, size_t item) {
@@ -2080,9 +2135,15 @@ void link_menu_action(void *ctx, size_t item) {
     int fd = open("/text/links.csv");
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
-    menu_stop();
-    goback_return_to_me(link_menu_return, (void*)(item + 1));
-    qrcode_display(url);
+    if (strlen(url) < 5) {
+        screen_draw_raw("/img/flag.raw", 0, 0, 82, 21);
+        screen_swap_fb();
+        delay(5000);
+    } else {
+        menu_stop();
+        goback_return_to_me(link_menu_return, (void*)(item + 1));
+        qrcode_display(url);
+    }
 }
 void link_menu(size_t item) {
     menu_start_csv(STR_ID_LINKS_TITLE, "/text/links.csv", link_menu_action, NULL, item, true);
@@ -2093,6 +2154,7 @@ void link_menu(size_t item) {
 //-----------------------------------------------------------------------------
 void game_menu(size_t item);
 void game_menu_return(void *ctx) {
+     dash_flag_reset();
      game_menu((size_t)ctx);
 }
 void game_menu_action(void *ctx, size_t item) {
@@ -2196,6 +2258,8 @@ void setup() {
     menu_init(app_mem, app_mem_size);
 
     LOG("NOPIA 1337");
+
+    flagcpy((char*)app_mem, 0);
 
     // IMAGE: BSIDESCBR
     screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
