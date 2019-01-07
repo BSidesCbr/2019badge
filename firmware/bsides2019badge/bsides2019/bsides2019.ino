@@ -176,6 +176,13 @@ void rngcpy(void *dst, size_t size) {
 //-----------------------------------------------------------------------------
 // Utils
 //-----------------------------------------------------------------------------
+char hex_nibble(uint8_t nibble) {
+    nibble = nibble & 0xf;
+    if (nibble < 10) {
+        return '0' + nibble;
+    }
+    return 'a' + (nibble - 10);
+}
 void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t data_size) {
     if (buffer_size <= 0) {
         return;
@@ -185,11 +192,13 @@ void hex_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t da
         return;
     }
     for (size_t i = 0; i < data_size; i++) {
-        sprintf(&(buffer[i*2]), "%02x", data[i]);
+        buffer[(i*2)+0] = hex_nibble(data[i] >> 4);
+        buffer[(i*2)+1] = hex_nibble(data[i] >> 0);
     }
+    buffer[data_size * 2] = '\0';
 }
 void dec_u32(char *buffer, uint32_t value, bool pad) {
-    // buffer is expected to be at least 11 bytes e.g. "4111222333\0"
+    // buffer is expected to be at least 11 bytes e.g. '4111222333\0'
     uint8_t i = 0;
     memset(buffer, '0', 10);
     buffer[10] = '\0';
@@ -278,100 +287,6 @@ void serial_init() {
         // wait
     }
 #endif
-}
-
-//-----------------------------------------------------------------------------
-// EEPROM persistent config
-//-----------------------------------------------------------------------------
-#define DEVICE_CONFIG_MAGIC       "NOPIA 3117"
-#define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
-
-struct device_config_t {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE];
-    uint16_t counter;
-    uint32_t device_id;
-};
-bool write_eeprom(int ee, const void *buffer, size_t buffer_size) {
-    for (size_t i = 0; i < buffer_size; i++) {
-        eeprom_write_byte((uint8_t*)(ee++), ((uint8_t*)buffer)[i]);
-    }
-    return true;
-}
-bool read_eeprom(int ee, void *buffer, size_t buffer_size) {
-    unsigned int i;
-    for (size_t i = 0; i < buffer_size; i++) {
-        ((uint8_t*)buffer)[i] = eeprom_read_byte((uint8_t*)(ee++));
-    }
-    return true;
-}
-bool check_config_ok(struct device_config_t *config) {
-    return 0 == memcmp(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
-}
-void init_config(struct device_config_t *config) {
-    memcpy(config->magic, DEVICE_CONFIG_MAGIC, DEVICE_CONFIG_MAGIC_SIZE);
-    rng_random(&(config->device_id));
-    config->counter = 0;
-}
-bool read_config(struct device_config_t *config) {
-    if (NULL == config) {
-        return false;
-    }
-    if (!read_eeprom(0, config, sizeof(device_config_t))) {
-        return false;
-    }
-    if (!check_config_ok(config)) {
-        init_config(config);
-        if (!write_eeprom(0, config, sizeof(device_config_t))) {
-            return false;
-        }
-        if (!read_eeprom(0, config, sizeof(device_config_t))) {
-            return false;
-        }
-        if (!check_config_ok(config)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-//-----------------------------------------------------------------------------
-// Get master key
-//-----------------------------------------------------------------------------
-void get_master_key(void *key, size_t key_size) {
-    read_eeprom(0xff, key, key_size);
-}
-
-//-----------------------------------------------------------------------------
-// Unique device ID
-//-----------------------------------------------------------------------------
-void get_device_id(uint32_t *device_id) {
-    struct device_config_t config;
-    if (!read_config(&config)) {
-        memset(device_id, 0, sizeof(uint32_t));
-        return;
-    }
-    memcpy(device_id, &(config.device_id), sizeof(uint32_t));
-}
-
-//-----------------------------------------------------------------------------
-// Unique device ID
-//-----------------------------------------------------------------------------
-#define DEVICE_IMEI_SIZE    (sizeof("3534344111222333"))
-void get_device_imei(char *buffer, size_t buffer_size) {
-    uint32_t device_id = 0;
-    if (buffer_size < DEVICE_IMEI_SIZE) {
-        return;
-    }
-    get_device_id(&device_id);
-    //sprintf(buffer, "353434%010lu", (unsigned long)device_id);
-    buffer[0] = '3';
-    buffer[1] = '5';
-    buffer[2] = '3';
-    buffer[3] = '4';
-    buffer[4] = '3';
-    buffer[5] = '4';
-    dec_u32(&(buffer[6]), device_id, true); // true == pad with zeros to 10
-    buffer[6 + 10] = '\0';
 }
 
 //-----------------------------------------------------------------------------
@@ -480,6 +395,137 @@ size_t csv_row_size(int fd, size_t row) {
         return 0;
     }
     return (size_t)(offset2 - offset1);
+}
+
+//-----------------------------------------------------------------------------
+// Strings stored in VFS
+//-----------------------------------------------------------------------------
+#define STD_ID_LINE_NO(line_no)       ((line_no)-1)
+#define STR_ID_UPLOAD_SCORE           STD_ID_LINE_NO(1)
+#define STR_ID_UPLOAD_URL             STD_ID_LINE_NO(2)
+#define STR_ID_NOPIA_TITLE            STD_ID_LINE_NO(3)
+#define STR_ID_BOOT_UNLOCKED_MSG_0    STD_ID_LINE_NO(4)
+#define STR_ID_BOOT_UNLOCKED_MSG_1    STD_ID_LINE_NO(5)
+#define STR_ID_BOOT_UNLOCKED_MSG_2    STD_ID_LINE_NO(6)
+#define STR_ID_SCHEDULE_TITLE         STD_ID_LINE_NO(7)
+#define STR_ID_LINKS_TITLE            STD_ID_LINE_NO(8)
+#define STR_ID_GAMES_TITLE            STD_ID_LINE_NO(9)
+#define STR_ID_DIAL_CODE_0000_VER     STD_ID_LINE_NO(10)
+#define STR_ID_DIAL_CODE_06_IMEI      STD_ID_LINE_NO(11)
+
+char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
+    if ((!buffer) || (buffer_size <= 1)) {
+        return "";
+    }
+    memset(buffer, 0, buffer_size);
+    int fd = open("/text/strings.txt");
+    csv_read(fd, (size_t)str_id, 0, buffer, buffer_size);
+    buffer[buffer_size - 1] = '\0';
+    close(fd);
+    for (size_t i = 0; i < buffer_size; i++) {
+        // dirty hack, hate you mac, windows and linux line endings you #$@%
+        if ((buffer[i] == 0x0a) || (buffer[i] == 0x0d)) {
+            buffer[i] = '\0';
+        }
+    }
+    return buffer;
+}
+
+//-----------------------------------------------------------------------------
+// EEPROM persistent config
+//-----------------------------------------------------------------------------
+#define DEVICE_CONFIG_MAGIC       "NOPIA 3117" // STR_ID_NOPIA_TITLE
+#define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
+
+struct device_config_t {
+    char magic[DEVICE_CONFIG_MAGIC_SIZE];
+    uint16_t counter;
+    uint32_t device_id;
+};
+bool write_eeprom(int ee, const void *buffer, size_t buffer_size) {
+    for (size_t i = 0; i < buffer_size; i++) {
+        eeprom_write_byte((uint8_t*)(ee++), ((uint8_t*)buffer)[i]);
+    }
+    return true;
+}
+bool read_eeprom(int ee, void *buffer, size_t buffer_size) {
+    unsigned int i;
+    for (size_t i = 0; i < buffer_size; i++) {
+        ((uint8_t*)buffer)[i] = eeprom_read_byte((uint8_t*)(ee++));
+    }
+    return true;
+}
+bool check_config_ok(struct device_config_t *config) {
+    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
+    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
+    return 0 == memcmp(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
+}
+void init_config(struct device_config_t *config) {
+    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
+    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
+    memcpy(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
+    rng_random(&(config->device_id));
+    config->counter = 0;
+}
+bool read_config(struct device_config_t *config) {
+    if (NULL == config) {
+        return false;
+    }
+    if (!read_eeprom(0, config, sizeof(device_config_t))) {
+        return false;
+    }
+    if (!check_config_ok(config)) {
+        init_config(config);
+        if (!write_eeprom(0, config, sizeof(device_config_t))) {
+            return false;
+        }
+        if (!read_eeprom(0, config, sizeof(device_config_t))) {
+            return false;
+        }
+        if (!check_config_ok(config)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+// Get master key
+//-----------------------------------------------------------------------------
+void get_master_key(void *key, size_t key_size) {
+    read_eeprom(0xff, key, key_size);
+}
+
+//-----------------------------------------------------------------------------
+// Unique device ID
+//-----------------------------------------------------------------------------
+void get_device_id(uint32_t *device_id) {
+    struct device_config_t config;
+    if (!read_config(&config)) {
+        memset(device_id, 0, sizeof(uint32_t));
+        return;
+    }
+    memcpy(device_id, &(config.device_id), sizeof(uint32_t));
+}
+
+//-----------------------------------------------------------------------------
+// Unique device ID
+//-----------------------------------------------------------------------------
+#define DEVICE_IMEI_SIZE    (sizeof("3534344111222333"))
+void get_device_imei(char *buffer, size_t buffer_size) {
+    uint32_t device_id = 0;
+    if (buffer_size < DEVICE_IMEI_SIZE) {
+        return;
+    }
+    get_device_id(&device_id);
+    buffer[0] = '3';
+    buffer[1] = '5';
+    buffer[2] = '3';
+    buffer[3] = '4';
+    buffer[4] = '3';
+    buffer[5] = '4';
+    dec_u32(&(buffer[6]), device_id, true); // true == pad with zeros to 10
+    buffer[6 + 10] = '\0';
 }
 
 //-----------------------------------------------------------------------------
@@ -885,15 +931,13 @@ void dash_init() {
 //-----------------------------------------------------------------------------
 // Unlocked bootloader message
 //-----------------------------------------------------------------------------
-void boot_unlocked_draw(void *mem, size_t mem_size) {
-    mem_size = mem_size;
+void boot_unlocked_draw() {
+    char msg[20];
     // Your device is unlocked and can't be trusted
-    memcpy_P(mem, F("Your device is"), sizeof("Your device is"));
-    screen_draw_string(0, 0, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-    memcpy_P(mem, F("unlocked and"), sizeof("unlocked and"));
-    screen_draw_string(0, 8, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-    memcpy_P(mem, F("can't be trusted"), sizeof("can't be trusted"));
-    screen_draw_string(0, 16, (const char*)mem, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    for (size_t i = 0; i < 3; i++) {
+        getstr(STR_ID_BOOT_UNLOCKED_MSG_0 + i, msg, sizeof(msg));
+        screen_draw_string(0, i * 8, (const char*)msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -982,7 +1026,6 @@ void score_format(char *buffer, size_t buffer_size, uint16_t score) {
         buffer[0] = '\0';
         return;
     }
-    //sprintf(buffer, "%lu", ((unsigned long)score) * 100);
     dec_u32(buffer, ((uint32_t)score) * 100, false); // don't pad with zeros
 }
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
@@ -1012,10 +1055,7 @@ void score_upload(uint8_t game, uint16_t score) {
     int fd;
 
     // get the upload url that ends with a query string e.g. "?t="
-    memset(url, 0, sizeof(url));
-    fd = open("/text/score-url.txt");
-    read(fd, url, sizeof(url)-1);
-    close(fd);
+    getstr(STR_ID_UPLOAD_URL, url, sizeof(url));
 
     // append to the end of the url a generated token
     score_token(url + strlen(url), (sizeof(url)-1) - strlen(url), game, score);
@@ -1024,10 +1064,7 @@ void score_upload(uint8_t game, uint16_t score) {
     qrcode_display(url);
 
     // get the "UPLOAD SCORE" text (we don't want to point directly to a string here)
-    memset(url, 0, sizeof(url));
-    fd = open("/text/score-upload.txt");
-    read(fd, url, sizeof(url)-1);
-    close(fd);
+    getstr(STR_ID_UPLOAD_SCORE, url, sizeof(url));
 
     // draw the "UPLOAD SCORE"
     screen_draw_string(0, SCREEN_HEIGHT - SCREEN_FONT_HEIGHT, url, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
@@ -1599,7 +1636,8 @@ typedef struct {
     char dialer_number[13];
     char expect_number[20];
 } dialer_mem_t;
-int dialder_fd = -1;
+int dialer_fd = -1;
+static char dialer_msg[20];
 #define DIALER_MEM_SIZE (sizeof(dialer_mem_t))
 dialer_mem_t *dialer = NULL;
 #define DIALER_BUTTON_OFFSET_X  18
@@ -1682,37 +1720,39 @@ void dialer_stop() {
 void dialer_start(void);
 void dialer_return(void *ctx) {
     ctx = ctx;
-    if (dialder_fd >= 0) {
-        close(dialder_fd);
-        dialder_fd = -1;
+    if (dialer_fd >= 0) {
+        close(dialer_fd);
+        dialer_fd = -1;
     }
     dialer_start();
 }
-bool dialer_check_P(const char *number, const void *expected_P) {
-    memcpy_P(dialer->expect_number, expected_P, sizeof(dialer->expect_number));
-    return 0 == strcmp(number, dialer->expect_number);
-}
-#define DIALER_CHECK(number,expected)  dialer_check_P(number, F(expected))
-#define DIAL_FILE(number,expected,pathname) \
-    if (DIALER_CHECK(number, expected)) { \
-        dialer_stop(); \
-        dialder_fd = open(pathname); \
-        goback_return_to_me(dialer_return, NULL); \
-        viewer_file(dialder_fd); \
-        return; \
-    }
-static char tmp[20];
-#define DIAL_IMEI(number,expected) \
-    if (DIALER_CHECK(number, expected)) { \
-        dialer_stop(); \
-        get_device_imei(tmp, sizeof(tmp)); \
-        goback_return_to_me(dialer_return, NULL); \
-        viewer_c_str(tmp); \
-        return; \
-    }
+#define DIAL_CODE_COUNT         2
+#define DIAL_CODE_CALC_SIZE(n)  (n*(sizeof(uint8_t)+sizeof(uint8_t)))
+const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
+    STR_ID_DIAL_CODE_0000_VER, 0x00,
+    STR_ID_DIAL_CODE_06_IMEI, 0x00,
+};
 void dialer_action(const char *number) {
-    DIAL_FILE(number, "*#0000#", "/dev/version");
-    DIAL_IMEI(number, "*#06#");
+    char dialer_code[20];
+    memset(dialer_msg, 0, sizeof(dialer_msg));
+    for (uint8_t i = 0; i < DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT); i += 2) {
+        getstr(dialer_codes[i], dialer_code, sizeof(dialer_code));
+        if (0 == strcmp(number, dialer_code)) {
+            dialer_stop();
+            goback_return_to_me(dialer_return, NULL);
+            getstr(dialer_codes[i+1], dialer_msg, sizeof(dialer_msg));
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_0000_VER) {
+                dialer_fd = open("/text/version.txt");
+                viewer_csv_row(dialer_fd, 0);
+                return;
+            }
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_06_IMEI) {
+                get_device_imei(dialer_msg, sizeof(dialer_msg));
+            }
+            viewer_c_str(dialer_msg);
+            return;
+        }
+    }
     memset(dialer->dialer_number, 0, sizeof(dialer->dialer_number));
     dialer_draw();
     screen_swap_fb();
@@ -1915,7 +1955,7 @@ void menu_init(void *mem, size_t mem_size) {
     tmnu_mem = (uint8_t*)mem;
     tmnu_mem_size = mem_size;
 }
-void menu_start_csv_hash(const void *title_flash, vfsc_hash_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, size_t item, bool back_menu) {
+void menu_start_csv_hash(uint8_t str_id_title, vfsc_hash_t hash, TmnuMenuItemOnSelectFn action, void *action_ctx, size_t item, bool back_menu) {
     size_t item_count = 0;
     int fd_and_back = -1;
 
@@ -1940,8 +1980,7 @@ void menu_start_csv_hash(const void *title_flash, vfsc_hash_t hash, TmnuMenuItem
     }
 
     // Copy the menu title from flash to ram
-    memcpy_P(menu_title, title_flash, sizeof(menu_title));
-    menu_title[sizeof(menu_title)-1] = '\0';
+    getstr(str_id_title, menu_title, sizeof(menu_title));
 
     // menu items are read from a csv file
     menu_fd = open_hash(hash);
@@ -1979,7 +2018,7 @@ void menu_start_csv_hash(const void *title_flash, vfsc_hash_t hash, TmnuMenuItem
     // Draw it now
     menu_draw();
 }
-#define menu_start_csv(title,pathname,action,action_ctx,item,back_menu)    menu_start_csv_hash(F(title),VFSC_HASH(pathname),action,action_ctx,item,back_menu)
+#define menu_start_csv(str_id_title,pathname,action,action_ctx,item,back_menu)    menu_start_csv_hash(str_id_title,VFSC_HASH(pathname),action,action_ctx,item,back_menu)
 void menu_stop() {
     interrupts_remove(tmnu_int_handle);
     tmnu_int_handle = INT_INVALID_HANDLE;
@@ -2018,7 +2057,7 @@ void schedule_menu_hash(vfsc_hash_t hash, size_t item) {
         schedule_hash = hash;
         schedule_csv_fd = open_hash(schedule_hash);
     }
-    menu_start_csv_hash(F("Schedule"), schedule_hash, schedule_menu_action, NULL, item, true);
+    menu_start_csv_hash(STR_ID_SCHEDULE_TITLE, schedule_hash, schedule_menu_action, NULL, item, true);
 }
 #define schedule_menu(pathname,item)   schedule_menu_hash(VFSC_HASH(pathname),item)
 
@@ -2046,7 +2085,7 @@ void link_menu_action(void *ctx, size_t item) {
     qrcode_display(url);
 }
 void link_menu(size_t item) {
-    menu_start_csv("Links", "/text/links.csv", link_menu_action, NULL, item, true);
+    menu_start_csv(STR_ID_LINKS_TITLE, "/text/links.csv", link_menu_action, NULL, item, true);
 }
 
 //-----------------------------------------------------------------------------
@@ -2076,7 +2115,7 @@ void game_menu_action(void *ctx, size_t item) {
     }
 }
 void game_menu(size_t item) {
-    menu_start_csv("Games", "/text/games-menu.csv", game_menu_action, NULL, item, true);
+    menu_start_csv(STR_ID_GAMES_TITLE, "/text/games-menu.csv", game_menu_action, NULL, item, true);
 }
 
 //-----------------------------------------------------------------------------
@@ -2119,7 +2158,7 @@ void main_menu_action(void *ctx, size_t item) {
     }
 }
 void main_menu(size_t item) {
-    menu_start_csv("NOPIA 1337", "/text/main-menu.csv", main_menu_action, NULL, item, false);
+    menu_start_csv(STR_ID_NOPIA_TITLE, "/text/main-menu.csv", main_menu_action, NULL, item, false);
 }
 
 //-----------------------------------------------------------------------------
@@ -2166,7 +2205,6 @@ void setup() {
     screen_draw_string(0, SCREEN_FONT_HEIGHT*0, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     uint32_t device_id;
     get_device_id(&device_id);
-    //sprintf(msg, "%lu", (unsigned long)device_id);
     dec_u32(msg, device_id, false);
     screen_draw_string(0, SCREEN_FONT_HEIGHT*1, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
     uint8_t key[AES_BLOCK_SIZE];
@@ -2190,7 +2228,7 @@ void setup() {
     delay(2000);
 
     // Boot unlocked
-    boot_unlocked_draw(app_mem, app_mem_size);
+    boot_unlocked_draw();
     screen_swap_fb();
     delay(2000);
 
