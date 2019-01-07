@@ -373,6 +373,9 @@ def main():
                 # for speed, use a raw (no header) bitmap
                 vf.arc = vf.arc.replace('.bmp', '.raw')
                 vf.data = data = Bitmap.parse(vf.data).data
+            if vf.arc.endswith('.txt') or vf.arc.endswith('.csv'):
+                # hate you line endings sooooo much
+                vf.data = vf.data.replace(b'\r\r', b'\r').replace(b'\r\n', b'\n')
             fs.files.append(vf)
     for vf in fs.files:
         print("{:08x} {} [{} bytes]".format(Hash.hash(vf.arc), vf.arc, vf.size()))

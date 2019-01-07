@@ -443,12 +443,6 @@ char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
     csv_read(fd, (size_t)str_id, 0, buffer, buffer_size);
     buffer[buffer_size - 1] = '\0';
     close(fd);
-    for (size_t i = 0; i < buffer_size; i++) {
-        // dirty hack, hate you mac, windows and linux line endings you #$@%
-        if ((buffer[i] == 0x0a) || (buffer[i] == 0x0d)) {
-            buffer[i] = '\0';
-        }
-    }
     return buffer;
 }
 
