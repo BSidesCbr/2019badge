@@ -57,38 +57,6 @@ void flagcpy(char *dst, uint8_t flag) {
 }
 
 //-----------------------------------------------------------------------------
-// Master key, don't lose it!
-//-----------------------------------------------------------------------------
-const uint8_t master[4+16+4] PROGMEM  = {
-    '\xec','\x10','\x3b','\xdf',  // random
-    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',  // master key
-    '\xff','\xab','\x81','\xd9',  // first byte must be 0xff for the eeprom address
-};
-
-// Obfuscate the the call to write the master key to EEPROM
-static uint8_t*             key_addr = NULL;
-static WriteEepromFn        write_eeprom_fn = NULL;
-static SetMasterKeyImplFn   set_master_key_impl_fn = NULL;
-
-// This will actually load the master key
-void set_master_key_impl(void) {
-    uint8_t key[16];
-    uint8_t *addr = key_addr;
-    for (size_t i = 0; i < sizeof(key); i++) {
-        ((uint8_t*)key)[i] = pgm_read_byte(addr + 4 + i);
-        ((uint8_t*)key)[i] ^= ((uint8_t)i);
-        ((uint8_t*)key)[i] ^= 0xaa;
-    }
-    write_eeprom_fn(pgm_read_byte(addr + 4 + 16), key, sizeof(key));
-}
-
-// Scatter these in the code base
-#define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master[0]))
-#define MASTER_KEY_SETUP_2_OF_4()   write_eeprom_fn=write_eeprom
-#define MASTER_KEY_SETUP_3_OF_4()   set_master_key_impl_fn=set_master_key_impl
-#define MASTER_KEY_SETUP_4_OF_4()   set_master_key_impl_fn()
-
-//-----------------------------------------------------------------------------
 // Binary data (generated) for Virtual File System (VFS)
 //-----------------------------------------------------------------------------
 #include "vfs.h"
@@ -451,6 +419,7 @@ char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
 //-----------------------------------------------------------------------------
 #define DEVICE_CONFIG_MAGIC       "NOPIA 3117" // STR_ID_NOPIA_TITLE
 #define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
+#define DEVICE_CONFIG_SIZE        (sizeof(struct device_config_t))
 
 struct device_config_t {
     char magic[DEVICE_CONFIG_MAGIC_SIZE];
@@ -503,6 +472,42 @@ bool read_config(struct device_config_t *config) {
     }
     return true;
 }
+
+//-----------------------------------------------------------------------------
+// Master key, don't lose it!
+//-----------------------------------------------------------------------------
+const uint8_t master[4+16+4] PROGMEM  = {
+    '\xec','\x10','\x3b','\xdf',  // random
+    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',  // master key
+    '\xff','\xab','\x81','\xd9',  // first byte must be 0xff for the eeprom address
+};
+
+// Obfuscate the the call to write the master key to EEPROM
+static uint8_t*             key_addr = NULL;
+static WriteEepromFn        write_eeprom_fn = NULL;
+static SetMasterKeyImplFn   set_master_key_impl_fn = NULL;
+
+// This will actually load the master key
+void set_master_key_impl(void) {
+    uint8_t key[16];
+    uint8_t *addr = key_addr;
+    for (int i = DEVICE_CONFIG_SIZE; i < (0x400 - DEVICE_CONFIG_SIZE - sizeof(key)); i += sizeof(key)) {
+        rngcpy(key, sizeof(key));
+        write_eeprom_fn(i, key, sizeof(key));
+    }
+    for (uint8_t i = 0; i < sizeof(key); i++) {
+        ((uint8_t*)key)[i] = pgm_read_byte(addr + 4 + i);
+        ((uint8_t*)key)[i] ^= ((uint8_t)i);
+        ((uint8_t*)key)[i] ^= 0xaa;
+    }
+    write_eeprom_fn(pgm_read_byte(addr + 4 + 16), key, sizeof(key));
+}
+
+// Scatter these in the code base
+#define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master[0]))
+#define MASTER_KEY_SETUP_2_OF_4()   write_eeprom_fn=write_eeprom
+#define MASTER_KEY_SETUP_3_OF_4()   set_master_key_impl_fn=set_master_key_impl
+#define MASTER_KEY_SETUP_4_OF_4()   set_master_key_impl_fn()
 
 //-----------------------------------------------------------------------------
 // Get master key
@@ -770,11 +775,6 @@ void nokia_init() {
     // backlight
     pinMode(NOKIA_5110_BL, OUTPUT);
     digitalWrite(NOKIA_5110_BL, HIGH);
-
-    // draw a screen with just black
-    nokia_draw_black();
-    nokia_swap_fb();
-    delay(1000);
 }
 
 //-----------------------------------------------------------------------------
@@ -2242,6 +2242,9 @@ void setup() {
     button_init();
     nokia_init();
     screen_init();
+    screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    screen_swap_fb();
+    delay(1000);
     dash_init();
     goback_init();
     dialer_init(app_mem, app_mem_size);
@@ -2256,7 +2259,6 @@ void setup() {
     flagcpy((char*)app_mem, 0);
 
     // IMAGE: BSIDESCBR
-    screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 #ifdef DEBUG_DISPLAY_CONFIG_ON_BOOT
     char msg[100];
     get_device_imei(msg, sizeof(msg));
@@ -2270,9 +2272,9 @@ void setup() {
     hex_encode(msg, sizeof(msg), key, sizeof(key));
     msg[12] = '\0';
     screen_draw_string(0, SCREEN_FONT_HEIGHT*2, msg, SCREEN_COLOR_BLACK, SCREEN_COLOR_WHITE);
-#endif
     screen_swap_fb();
     delay(2000);
+#endif
 
 #ifdef DEBUG_SCORE_TOKEN
     score_upload(0x11, 0x3117);
