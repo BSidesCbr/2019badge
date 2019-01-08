@@ -889,6 +889,7 @@ void screen_init() {
     }
 }
 #define screen_draw_raw(pathname,x,y,w,h)     nokia_draw_raw(pathname,x,y,w,h)
+#define screen_draw_raw_hash(hash,x,y,w,h)    nokia_draw_raw_hash(hash,x,y,w,h)
 #define screen_swap_fb()                      nokia_swap_fb()
 #define screen_draw_clear()                   nokia_draw_clear()
 #define screen_fill_rect(x,y,w,h,color)       (void)vg2d_fill_rect(&screen, x, y, w, h, color ? 1 : 0)
@@ -1893,6 +1894,76 @@ void dialer_start() {
 }
 
 //-----------------------------------------------------------------------------
+// Images
+//-----------------------------------------------------------------------------
+#define IMG_ID_FIRST      0
+#define IMG_ID_BSIDES     0
+#define IMG_ID_NOPIA      1
+#define IMG_ID_CYBERNATS  2
+#define IMG_ID_LAST       IMG_ID_CYBERNATS
+void img_display(uint8_t img_id) {
+    vfsc_hash_t hash;
+    uint8_t x = 0;
+    uint8_t y = 0;
+    uint8_t width = SCREEN_WIDTH;
+    uint8_t height = SCREEN_HEIGHT;
+    switch(img_id) {
+        case IMG_ID_BSIDES:
+            hash = VFSC_HASH("/img/bsidescbr.raw");
+            break;
+        case IMG_ID_NOPIA:
+            hash = VFSC_HASH("/img/nopia.raw");
+            break;
+        case IMG_ID_CYBERNATS:
+            hash = VFSC_HASH("/img/cybernats.raw");
+            break;
+        default:
+            return;
+    }
+    screen_draw_clear();
+    screen_draw_raw_hash(hash, x, y, width, height);
+    screen_swap_fb();
+}
+static uint8_t img_id_cur = IMG_ID_BSIDES;
+#define img_stop() goback_return()
+void img_button_press(void *ctx, button_key_t key, button_state_t state) {
+    ctx = ctx;
+    if ((BUTTON_KEY_LEFT == key) && (BUTTON_STATE_HOLD == state)) {
+        img_stop();
+        return;
+    }
+    if (BUTTON_STATE_DOWN != state) {
+        return;
+    }
+    switch(key) {
+        case BUTTON_KEY_LEFT:
+            if (0 == img_id_cur) {
+                img_id_cur = IMG_ID_LAST;
+            } else {
+                img_id_cur--;
+            }
+            break;
+        case BUTTON_KEY_RIGHT:
+            img_id_cur++;
+            if (img_id_cur > IMG_ID_LAST) {
+                img_id_cur = IMG_ID_FIRST;
+            }
+            break;
+        case BUTTON_KEY_OK:
+            img_stop();
+            return;
+        default:
+            break;
+    }
+    img_display(img_id_cur);
+}
+void img_start() {
+    img_id_cur = IMG_ID_FIRST;
+    img_display(img_id_cur);
+    button_set_callback(img_button_press, NULL);
+}
+
+//-----------------------------------------------------------------------------
 // Tiny Menu
 //-----------------------------------------------------------------------------
 #define MENU_WIDTH              60
@@ -2239,6 +2310,9 @@ void main_menu_action(void *ctx, size_t item) {
             game_menu(0);
             break;
         case 5:
+            menu_stop();
+            goback_return_to_me(main_menu_return, (void*)item);
+            img_start();
             break;
     }
 }
@@ -2273,8 +2347,7 @@ void setup() {
     screen_init();
 
     // IMAGE: BSIDES CANBERRA (while waiting to boot)
-    screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    screen_swap_fb();
+    img_display(IMG_ID_BSIDES);
     delay(1000);
 
     dash_init();
@@ -2320,8 +2393,7 @@ void setup() {
 
 #ifndef DEBUG_SHOW_DIAG_ONLY
     // IMAGE: NOPIA
-    screen_draw_raw("/img/nopia.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    screen_swap_fb();
+    img_display(IMG_ID_NOPIA);
     delay(2000);
 
     // Boot unlocked
@@ -2330,8 +2402,7 @@ void setup() {
     delay(2000);
 
     // IMAGE: CYBERNATS
-    screen_draw_raw("/img/cybernats.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    screen_swap_fb();
+    img_display(IMG_ID_CYBERNATS);
     delay(1000);
 
     // MENU
