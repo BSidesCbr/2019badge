@@ -21,6 +21,7 @@
 //#define DEBUG_DISPLAY_CONFIG_ON_BOOT
 //#define DEBUG_SCORE_TOKEN
 //#define DEBUG_BATTERY_LEVEL
+//#define DEBUG_RANDOM
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
 //#define GPIO_MODIFIED_DEC_PROTOTYPE
 #define GPIO_PRODUCTION
@@ -117,6 +118,36 @@ void yield(void) {
 #endif
 
 //-----------------------------------------------------------------------------
+// Power / VCC level
+//-----------------------------------------------------------------------------
+uint16_t readVcc() {
+    // Credits to:
+    // https://www.instructables.com/id/Secret-Arduino-Voltmeter/
+
+    // Read 1.1V reference against AVcc
+    // set the reference to Vcc and the measurement to the internal 1.1V reference
+    #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+        ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+        ADMUX = _BV(MUX5) | _BV(MUX0) ;
+    #else
+        ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    #endif
+    
+    delay(2); // Wait for Vref to settle
+    ADCSRA |= _BV(ADSC); // Start conversion
+    while (bit_is_set(ADCSRA,ADSC)); // measuring
+    
+    uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+    uint8_t high = ADCH; // unlocks both
+    
+    long result = (high<<8) | low;
+    
+    result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+    return (uint16_t)result; // Vcc in millivolts
+}
+
+//-----------------------------------------------------------------------------
 // CRC32 - Credit to: http://home.thep.lu.se/~bjorn/crc/
 //-----------------------------------------------------------------------------
 uint32_t crc32_for_byte(uint32_t r) {
@@ -133,29 +164,55 @@ void crc32(const void *data, size_t n_bytes, uint32_t* crc) {
 }
 
 //-----------------------------------------------------------------------------
+// AES
+//-----------------------------------------------------------------------------
+#define AES_BLOCK_SIZE  (AES_BLOCKLEN)
+#define AES_KEY_SIZE    (AES_BLOCKLEN)
+#define AES_IV_SIZE     (AES_BLOCKLEN)
+static struct AES_ctx aes_ctx_tmp;
+void aes_128_cbc_no_iv_single_block(void *key, void *data, size_t data_size)
+{
+    if (data_size != AES_BLOCK_SIZE) {
+        memset(data, 0, data_size);
+        return;
+    }
+    uint8_t iv[AES_IV_SIZE];
+    memset(iv, 0, sizeof(iv));
+    //struct AES_ctx *aes_ctx = (struct AES_ctx *)nokia_screen_buffer; // dirty hack to reuse screen memory
+    memset(&aes_ctx_tmp, 0, sizeof(aes_ctx_tmp));
+    AES_init_ctx_iv(&aes_ctx_tmp, key, iv);
+    AES_CBC_encrypt_buffer(&aes_ctx_tmp, data, data_size);
+}
+
+//-----------------------------------------------------------------------------
 // Random
 //-----------------------------------------------------------------------------
+int16_t rng_range_s16(int16_t min, int16_t max) {
+    return ((int16_t)(random((long)min,(long)(max+1))));
+}
+uint8_t rng_part(uint16_t value, uint8_t i) {
+    if (i & 0x1) {
+        return (uint8_t)((value >> 8) & 0xff);
+    }
+    return (uint8_t)(value & 0xff);
+}
+uint8_t rng_u8(uint8_t i) {
+    uint8_t rng_value = ((uint8_t)random());
+    rng_value ^= ((uint8_t)analogRead(i & 0x3));
+    rng_value ^= rng_part(readVcc(), i);
+    rng_value ^= rng_part((uint16_t)millis(), i >> 1);
+    return rng_value;
+}
 void rng_init() {
-    // not great, got a better idea?
-    // got a better idea??
-    randomSeed(analogRead(0) ^ analogRead(1) ^ analogRead(2) ^ analogRead(3));
+    uint16_t seed = 0;
+    uint8_t *seed_part = (uint8_t*)&seed;
+    seed_part[0] = rng_u8(0);
+    seed_part[1] = rng_u8(1);
+    randomSeed(seed);
 }
-int16_t rng_random_s16(int16_t min, int16_t max) {
-    return (int16_t) random((long)min, (long)(max + 1));
-}
-uint8_t rng_random_u8() {
-    return (uint8_t)rng_random_s16(0, 255);
-}
-void rng_random(uint32_t *number) {
-    ((uint8_t*)number)[0] = ((uint8_t)analogRead(0)) ^ rng_random_u8();
-    ((uint8_t*)number)[1] = ((uint8_t)analogRead(1)) ^ rng_random_u8();
-    ((uint8_t*)number)[2] = ((uint8_t)analogRead(2)) ^ rng_random_u8();
-    ((uint8_t*)number)[3] = ((uint8_t)analogRead(3)) ^ rng_random_u8();
-    ((uint16_t*)number)[0] ^= (uint16_t)millis();
-}
-void rngcpy(void *dst, size_t size) {
-    for (size_t i = 0; i < size; i++) {
-        ((uint8_t*)dst)[i] = rng_random_u8();
+void rngcpy(void *dst, uint8_t size) {
+    for (uint8_t i = 0; i < size; i++) {
+        ((uint8_t*)dst)[i] = rng_u8(i);
     }
 }
 
@@ -453,7 +510,7 @@ void init_config(struct device_config_t *config) {
     char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
     getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
     memcpy(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
-    rng_random(&(config->device_id));
+    rngcpy(&(config->device_id), 4);
     config->counter = 0;
 }
 bool read_config(struct device_config_t *config) {
@@ -792,25 +849,6 @@ void nokia_init() {
 }
 
 //-----------------------------------------------------------------------------
-// AES
-//-----------------------------------------------------------------------------
-#define AES_BLOCK_SIZE  (AES_BLOCKLEN)
-#define AES_KEY_SIZE    (AES_BLOCKLEN)
-#define AES_IV_SIZE     (AES_BLOCKLEN)
-void aes_128_cbc_no_iv_single_block(void *key, void *data, size_t data_size)
-{
-    if (data_size != AES_BLOCK_SIZE) {
-        memset(data, 0, data_size);
-        return;
-    }
-    uint8_t iv[AES_IV_SIZE];
-    memset(iv, 0, sizeof(iv));
-    struct AES_ctx *aes_ctx = (struct AES_ctx *)nokia_screen_buffer; // dirty hack to reuse screen memory
-    AES_init_ctx_iv(aes_ctx, key, iv);
-    AES_CBC_encrypt_buffer(aes_ctx, data, data_size);
-}
-
-//-----------------------------------------------------------------------------
 // Screen
 //-----------------------------------------------------------------------------
 #define SCREEN_COLOR_WHITE  (false)
@@ -867,35 +905,9 @@ size_t screen_string_width(const char *s) {
 //-----------------------------------------------------------------------------
 // Power / Battery Level
 //-----------------------------------------------------------------------------
-long readVcc() {
-    // Credits to:
-    // https://www.instructables.com/id/Secret-Arduino-Voltmeter/
-  
-    // Read 1.1V reference against AVcc
-    // set the reference to Vcc and the measurement to the internal 1.1V reference
-    #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-        ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-    #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
-        ADMUX = _BV(MUX5) | _BV(MUX0) ;
-    #else
-        ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-    #endif
-    
-    delay(2); // Wait for Vref to settle
-    ADCSRA |= _BV(ADSC); // Start conversion
-    while (bit_is_set(ADCSRA,ADSC)); // measuring
-    
-    uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
-    uint8_t high = ADCH; // unlocks both
-    
-    long result = (high<<8) | low;
-    
-    result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
-    return result; // Vcc in millivolts
-}
 uint8_t power_get_battery_level()
 { 
-    int voltage = (int)readVcc();
+    uint16_t voltage = readVcc();
     uint8_t level = 4;
     if (voltage < BATTERY_LEVEL_1_LOW) {
         level = 0;
@@ -960,7 +972,7 @@ void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
     dash_power = power_get_battery_level();
     dash_power = (1 << dash_power) - 1;
-    dash_signal = rng_random_s16(0, 4);
+    dash_signal = rng_range_s16(0, 4);
     dash_signal = (1 << dash_signal) - 1;
 
     if (dash_mode_flag) {
@@ -1173,7 +1185,7 @@ void SNKC_API snake_draw_apple_api(void *ctx, int16_t x, int16_t y) {
 }
 int16_t SNKC_API snake_random_api(void *ctx, int16_t min, int16_t max) {
     ctx = ctx;
-    return rng_random_s16(min, max);
+    return rng_range_s16(min, max);
 }
 void snake_start();
 void snake_stop();
@@ -1361,7 +1373,7 @@ void TTRS_API tetris_draw_block(void *ctx, int16_t x, int16_t y) {
 }
 int16_t TTRS_API tetris_random(void *ctx, int16_t min, int16_t max) {
     ctx = ctx;
-    return rng_random_s16(min, max);
+    return rng_range_s16(min, max);
 }
 void tetris_start();
 void tetris_stop();
@@ -2259,9 +2271,12 @@ void setup() {
     button_init();
     nokia_init();
     screen_init();
+
+    // IMAGE: BSIDES CANBERRA (while waiting to boot)
     screen_draw_raw("/img/bsidescbr.raw", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     screen_swap_fb();
     delay(1000);
+
     dash_init();
     goback_init();
     dialer_init(app_mem, app_mem_size);
@@ -2275,7 +2290,12 @@ void setup() {
 
     flagcpy((char*)app_mem, 0);
 
-    // IMAGE: BSIDESCBR
+#ifdef DEBUG_RANDOM
+    rngcpy(nokia_screen_buffer, 255);
+    rngcpy(nokia_screen_buffer + 255, sizeof(nokia_screen_buffer) - 255);
+    screen_swap_fb();
+#endif
+
 #ifdef DEBUG_DISPLAY_CONFIG_ON_BOOT
     char msg[100];
     get_device_imei(msg, sizeof(msg));
