@@ -264,6 +264,11 @@ void fb64_encode(char *buffer, size_t buffer_size, const uint8_t *data, size_t d
 }
 
 //-----------------------------------------------------------------------------
+// Binary data (generated) containing key for EEPROM
+//-----------------------------------------------------------------------------
+#include "key.h"
+
+//-----------------------------------------------------------------------------
 // Serial
 //-----------------------------------------------------------------------------
 void serial_init() {
@@ -476,11 +481,6 @@ bool read_config(struct device_config_t *config) {
 //-----------------------------------------------------------------------------
 // Master key, don't lose it!
 //-----------------------------------------------------------------------------
-const uint8_t master[4+16+4] PROGMEM  = {
-    '\xec','\x10','\x3b','\xdf',  // random
-    '\x6c','\x1c','\x54','\x8f','\x7c','\xf7','\x56','\x3d','\x43','\x7e','\x85','\xda','\x6d','\x5c','\xb0','\x82',  // master key
-    '\xff','\xab','\x81','\xd9',  // first byte must be 0xff for the eeprom address
-};
 
 // Obfuscate the the call to write the master key to EEPROM
 static uint8_t*             key_addr = NULL;
@@ -504,7 +504,7 @@ void set_master_key_impl(void) {
 }
 
 // Scatter these in the code base
-#define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master[0]))
+#define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master_key_data[0]))
 #define MASTER_KEY_SETUP_2_OF_4()   write_eeprom_fn=write_eeprom
 #define MASTER_KEY_SETUP_3_OF_4()   set_master_key_impl_fn=set_master_key_impl
 #define MASTER_KEY_SETUP_4_OF_4()   set_master_key_impl_fn()
@@ -512,8 +512,22 @@ void set_master_key_impl(void) {
 //-----------------------------------------------------------------------------
 // Get master key
 //-----------------------------------------------------------------------------
-void get_master_key(void *key, size_t key_size) {
+void get_master_key(uint8_t *key, size_t key_size) {
+    uint8_t key2[16];
+    memset(key, 0, key_size);
+    int fd = open("/keys/key.bin");
+    int key2_size = (int)read(fd, key2, sizeof(key2));
+    close(fd);
+    if (16 != key2_size) {
+        return;
+    }
+    if (16 != key_size) {
+        return;
+    }
     read_eeprom(0xff, key, key_size);
+    for (uint8_t i = 0; i < 16; i++) {
+        key[i] = key[i] ^ key2[i];
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -1076,6 +1090,7 @@ void score_format(char *buffer, size_t buffer_size, uint16_t score) {
 void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score) {
     uint8_t key[AES_KEY_SIZE];
     uint8_t token[16];
+    uint32_t crc32val;
     uint32_t token_device_id = 0;
     uint32_t token_score = ((uint32_t)score) * 100;
     get_device_id(&token_device_id);
@@ -1084,9 +1099,11 @@ void score_token(char *buffer, size_t buffer_size, uint8_t game, uint16_t score)
     memcpy(token + 4, &token_score, 4);
     memcpy(token + 8, &game, 1);
     rngcpy(&(token[9]), 3);
+    memcpy(token + 12, &token_device_id, 4);
 
     // crc32 inside token
-    crc32(token, 12, (uint32_t*)&token[12]);
+    crc32(token, 16, &crc32val);
+    memcpy(&token[12], &crc32val, 4);
 
     // encrypt token
     get_master_key(key, sizeof(key));

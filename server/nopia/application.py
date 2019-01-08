@@ -30,6 +30,15 @@ def get_key():
         return None
     return key
 
+def get_key_2():
+    try:
+        key = binascii.a2b_hex(os.environ['NOPIA_KEY_2'])
+        assert len(key) == 16
+        assert isinstance(key, bytes)
+    except:
+        return None
+    return key
+
 def get_query_string(environ, param):
     try:
         value = parse_qs(environ['QUERY_STRING'])[param][0]
@@ -131,6 +140,7 @@ def submit_name_form_app(environ, start_response, qs_token, token):
 
 def bsides2019_app(environ, start_response):
     key = get_key()
+    key2 = get_key_2()
     qs_token_unsafe = get_query_string(environ, 't')
     qs_save_unsafe = get_query_string(environ, 's')
     qs_name_unsafe = get_query_string(environ, 'n')
@@ -141,7 +151,7 @@ def bsides2019_app(environ, start_response):
                 score.reset_db()
     if qs_token_unsafe:
         # uploading a token
-        token = Token.decode(key, qs_token_unsafe)
+        token = Token.decode(key, key2, qs_token_unsafe)
         # if no error parsing the token, its considered safe
         qs_token_safe = qs_token_unsafe
         # add the score
@@ -151,7 +161,7 @@ def bsides2019_app(environ, start_response):
         return submit_name_form_app(environ, start_response, qs_token_safe, token)
     elif qs_save_unsafe:
         # parse the token to get the user imei
-        token = Token.decode(key, qs_save_unsafe)
+        token = Token.decode(key, key2, qs_save_unsafe)
         # second time (with a name field) change the name
         safe_name = sanitize_name(qs_name_unsafe)
         if safe_name:

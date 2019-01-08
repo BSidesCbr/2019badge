@@ -35,12 +35,13 @@ class Token(object):
         return '{}\n{} {} pts'.format(self.imei, self.game, self.score)
 
     @classmethod
-    def decode_key(cls, key):
+    def decode_key(cls, key, key2):
         new_key = b''
         for i in range(0, len(key)):
             value = key[i]
             value ^= i
             value ^= 0xaa
+            value ^= key2[i]
             new_key += struct.pack('<B', value)
         assert len(new_key) == len(key)
         return new_key
@@ -168,9 +169,9 @@ class Token(object):
         return out[:16]
 
     @classmethod
-    def decode(cls, key, data):
+    def decode(cls, key, key2, data):
         obj = cls()
-        key = cls.decode_key(key)
+        key = cls.decode_key(key, key2)
         if isinstance(data, str):
             data = data.encode('ascii')
         data = cls.fb64_decode(data)
@@ -178,7 +179,7 @@ class Token(object):
         obj.device_id = struct.unpack('<I', data[0: 4])[0]
         obj.score = struct.unpack('<I', data[4: 8])[0]
         obj.game_code = struct.unpack('<B', data[8: 9])[0]
-        expected = cls.crc32(data[:12])
+        expected = cls.crc32(data[:12] + data[:4])
         result = struct.unpack('<I', data[12: 16])[0]
         assert expected == result, "{} == {}".format(hex(expected), hex(result))
         assert obj.score % 100 == 0  # scores are a multiple of 100
@@ -192,11 +193,11 @@ class Token(object):
             assert obj.score == 0
         return obj
 
-    def encode(self, key):
-        key = self.decode_key(key)
+    def encode(self, key, key2):
+        key = self.decode_key(key, key2)
         data = struct.pack('<IIB', self.device_id, self.score, self.game_code)
         data += os.urandom(3)
-        data += struct.pack('<I', self.crc32(data))
+        data += struct.pack('<I', self.crc32(data + data[:4]))
         assert len(data) == 16
         data = self.encrypt_aes_128_cbc_no_iv_single_block(key, data)
         text = self.fb64_encode(data)

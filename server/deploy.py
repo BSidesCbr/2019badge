@@ -10,6 +10,13 @@ with open(MASTER_KEY_HEX, 'rt') as handle:
 assert isinstance(MASTER_KEY, bytes)
 assert len(MASTER_KEY) == 16
 
+MASTER_KEY_2_HEX = os.path.join(os.path.dirname(__file__), '..', 'keys', 'master2.hex')
+assert os.path.exists(MASTER_KEY_2_HEX)
+with open(MASTER_KEY_2_HEX, 'rt') as handle:
+    MASTER_KEY_2 = binascii.a2b_hex(handle.read())
+assert isinstance(MASTER_KEY_2, bytes)
+assert len(MASTER_KEY_2) == 16
+
 APPLICATION_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'nopia'))
 assert os.path.exists(APPLICATION_DIR)
 assert os.path.isdir(APPLICATION_DIR)
@@ -46,8 +53,15 @@ def load_master_key():
     assert len(key_hex) == 32
     eb_setenv('NOPIA_KEY', key_hex)
 
+def load_master_key_2():
+    key_hex = binascii.b2a_hex(MASTER_KEY_2).decode('ascii')
+    assert isinstance(key_hex, str) and not isinstance(key_hex, bytes)
+    assert len(key_hex) == 32
+    eb_setenv('NOPIA_KEY_2', key_hex)
+
 def loadkeys():
     load_master_key()
+    load_master_key_2()
 
 def package():
     if os.path.exists(APPLICATION_ZIP):
