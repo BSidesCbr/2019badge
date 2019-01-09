@@ -37,7 +37,7 @@ typedef uint8_t button_key_t;
 typedef uint8_t button_state_t;
 typedef void(*ButtonPressFn)(void *ctx, button_key_t key, button_state_t state);
 
-typedef bool(*WriteEepromFn)(int ee, const void *buffer, size_t buffer_size);
+typedef void(*CopyKeyFn)(const void *dst, void *src, size_t size);
 typedef void(*SetMasterKeyImplFn)(void);
 
 //-----------------------------------------------------------------------------
@@ -446,6 +446,14 @@ size_t csv_row_size(int fd, size_t row) {
 }
 
 //-----------------------------------------------------------------------------
+// Master key (fake value, gets changed)
+//-----------------------------------------------------------------------------
+static uint8_t master_key1[16] = {
+    // This is not the key, it gets written with other data first :)
+    '\x9c', '\xc3', '\xf3', '\x50', '\xe8', '\x4a', '\x19', '\xdc', '\x21', '\xc5', '\xa7', '\x6e', '\xda', '\xd3', '\x6c', '\x91'
+};
+
+//-----------------------------------------------------------------------------
 // Strings stored in VFS
 //-----------------------------------------------------------------------------
 #define STD_ID_LINE_NO(line_no)       ((line_no)-1)
@@ -536,33 +544,35 @@ bool read_config(struct device_config_t *config) {
 }
 
 //-----------------------------------------------------------------------------
-// Master key, don't lose it!
+// Master key 1
 //-----------------------------------------------------------------------------
 
-// Obfuscate the the call to write the master key to EEPROM
+// Obfuscate the the call to write the master key
 static uint8_t*             key_addr = NULL;
-static WriteEepromFn        write_eeprom_fn = NULL;
+static uint8_t*             dst_addr = NULL;
+static CopyKeyFn            copy_key_fn = NULL;
 static SetMasterKeyImplFn   set_master_key_impl_fn = NULL;
+
+// This will copy the key
+void master_key_copy(const void *dst, void *src, size_t size) {
+    memcpy(dst, src, size);
+}
 
 // This will actually load the master key
 void set_master_key_impl(void) {
     uint8_t key[16];
     uint8_t *addr = key_addr;
-    for (int i = DEVICE_CONFIG_SIZE; i < (0x400 - DEVICE_CONFIG_SIZE - sizeof(key)); i += sizeof(key)) {
-        rngcpy(key, sizeof(key));
-        write_eeprom_fn(i, key, sizeof(key));
-    }
     for (uint8_t i = 0; i < sizeof(key); i++) {
         ((uint8_t*)key)[i] = pgm_read_byte(addr + 4 + i);
         ((uint8_t*)key)[i] ^= ((uint8_t)i);
         ((uint8_t*)key)[i] ^= 0xaa;
     }
-    write_eeprom_fn(pgm_read_byte(addr + 4 + 16), key, sizeof(key));
+    copy_key_fn(dst_addr, key, sizeof(key));
 }
 
 // Scatter these in the code base
 #define MASTER_KEY_SETUP_1_OF_4()   key_addr=(uint8_t*)(&(master_key_data[0]))
-#define MASTER_KEY_SETUP_2_OF_4()   write_eeprom_fn=write_eeprom
+#define MASTER_KEY_SETUP_2_OF_4()   copy_key_fn=master_key_copy; dst_addr=(uint8_t*)(&(master_key1[0]))
 #define MASTER_KEY_SETUP_3_OF_4()   set_master_key_impl_fn=set_master_key_impl
 #define MASTER_KEY_SETUP_4_OF_4()   set_master_key_impl_fn()
 
@@ -581,7 +591,7 @@ void get_master_key(uint8_t *key, size_t key_size) {
     if (16 != key_size) {
         return;
     }
-    read_eeprom(0xff, key, key_size);
+    memcpy(key, master_key1, key_size);
     for (uint8_t i = 0; i < 16; i++) {
         key[i] = key[i] ^ key2[i];
     }
@@ -2345,11 +2355,6 @@ void setup() {
     button_init();
     nokia_init();
     screen_init();
-
-    // IMAGE: BSIDES CANBERRA (while waiting to boot)
-    img_display(IMG_ID_BSIDES);
-    delay(1000);
-
     dash_init();
     goback_init();
     dialer_init(app_mem, app_mem_size);
@@ -2362,6 +2367,10 @@ void setup() {
     LOG("NOPIA 1337");
 
     flagcpy((char*)app_mem, 0);
+
+    // IMAGE: BSIDES CANBERRA (while waiting to boot)
+    img_display(IMG_ID_BSIDES);
+    delay(2000);
 
 #ifdef DEBUG_RANDOM
     rngcpy(nokia_screen_buffer, 255);
