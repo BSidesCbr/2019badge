@@ -937,7 +937,8 @@ uint8_t power_get_battery_level()
 //-----------------------------------------------------------------------------
 static uint8_t dash_power;
 static uint8_t dash_signal;
-#define DASH_FLAG_DELAY_SEC   30
+static uint8_t dash_signal_prev; 
+#define DASH_FLAG_DELAY_SEC   60
 static uint8_t dash_mode_counter = 0;
 static bool dash_mode_flag = false;
 static uint8_t dash_mode_nibble = 0;
@@ -983,8 +984,14 @@ void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
     dash_power = power_get_battery_level();
     dash_power = (1 << dash_power) - 1;
-    dash_signal = rng_range_s16(0, 4);
-    dash_signal = (1 << dash_signal) - 1;
+    dash_signal_prev += (uint8_t)rng_range_s16(0, 2);
+    if (dash_signal_prev > 5) {
+        dash_signal_prev = 5;
+    }
+    if (dash_signal_prev > 0) {
+        dash_signal_prev--;
+    }
+    dash_signal = (1 << dash_signal_prev) - 1;
 
     if (dash_mode_flag) {
         char dash_flag[FLAG_SIZE];
