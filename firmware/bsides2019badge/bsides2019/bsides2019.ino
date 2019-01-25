@@ -1924,20 +1924,29 @@ void img_display(uint8_t img_id) {
     uint8_t y = 0;
     uint8_t width = SCREEN_WIDTH;
     uint8_t height = SCREEN_HEIGHT;
+    screen_draw_clear();
     switch(img_id) {
         case IMG_ID_BSIDES:
             hash = VFSC_HASH("/img/bsidescbr.raw");
+            height = 43;
+            y = 2;
             break;
         case IMG_ID_NOPIA:
             hash = VFSC_HASH("/img/nopia.raw");
+            height = 43;
+            y++;
+            screen_fill_rect(x, y + height, width, 5, SCREEN_COLOR_BLACK);
             break;
         case IMG_ID_CYBERNATS:
             hash = VFSC_HASH("/img/cybernats.raw");
+            width = 77;
+            height = 45;
+            x = 2;
+            y++;
             break;
         default:
             return;
     }
-    screen_draw_clear();
     screen_draw_raw_hash(hash, x, y, width, height);
     screen_swap_fb();
 }
