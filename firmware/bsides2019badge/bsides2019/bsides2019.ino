@@ -487,14 +487,13 @@ char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
 //-----------------------------------------------------------------------------
 // EEPROM persistent config
 //-----------------------------------------------------------------------------
-#define DEVICE_CONFIG_MAGIC       "NOPIA 3117" // STR_ID_NOPIA_TITLE
-#define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
 #define DEVICE_CONFIG_SIZE        (sizeof(struct device_config_t))
-
+#define DEVICE_CONFIG_MAGIC       ((uint32_t)0xa8b3df93);
 struct device_config_t {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE];
-    uint16_t counter;
+    uint32_t rng1;
     uint32_t device_id;
+    uint32_t rng2;
+    uint32_t chksum;
 };
 bool write_eeprom(int ee, const void *buffer, size_t buffer_size) {
     for (size_t i = 0; i < buffer_size; i++) {
@@ -510,16 +509,19 @@ bool read_eeprom(int ee, void *buffer, size_t buffer_size) {
     return true;
 }
 bool check_config_ok(struct device_config_t *config) {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
-    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
-    return 0 == memcmp(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
+    uint32_t chksum;
+    struct device_config_t config_calc;
+    memcpy(&config_calc, config, DEVICE_CONFIG_SIZE);
+    config_calc.chksum = DEVICE_CONFIG_MAGIC;
+    crc32(&config_calc, DEVICE_CONFIG_SIZE, &chksum);
+    return config->chksum == chksum;
 }
 void init_config(struct device_config_t *config) {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
-    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
-    memcpy(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
-    rngcpy(&(config->device_id), 4);
-    config->counter = 0;
+    uint32_t chksum;
+    rngcpy(&(config->rng1), 12);
+    config->chksum = DEVICE_CONFIG_MAGIC;
+    crc32(config, DEVICE_CONFIG_SIZE, &chksum);
+    config->chksum = chksum;
 }
 bool read_config(struct device_config_t *config) {
     if (NULL == config) {
