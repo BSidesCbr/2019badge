@@ -1927,9 +1927,10 @@ void img_display(uint8_t img_id) {
     screen_draw_clear();
     switch(img_id) {
         case IMG_ID_BSIDES:
+            screen_draw_raw("/img/flagsmall.raw", 46, 0, 9, 11);
             hash = VFSC_HASH("/img/bsidescbr.raw");
-            height = 43;
-            y = 2;
+            height = 32;
+            y = 11;
             break;
         case IMG_ID_NOPIA:
             hash = VFSC_HASH("/img/nopia.raw");
@@ -2216,8 +2217,6 @@ void schedule_menu_action(void *ctx, size_t item) {
     ctx = ctx;
     if (0 == item) {
         menu_stop();
-        close(schedule_csv_fd);
-        schedule_csv_fd = -1;
         goback_return();
         return;
     }
@@ -2227,7 +2226,10 @@ void schedule_menu_action(void *ctx, size_t item) {
     viewer_csv_row(schedule_csv_fd, item);
 }
 void schedule_menu_hash(vfsc_hash_t hash, size_t item) {
-    if ((schedule_csv_fd < 0) && (0 != hash)) {
+    if (0 != hash) {
+        if (!(schedule_csv_fd < 0)) {
+            close(schedule_csv_fd);
+        }
         schedule_hash = hash;
         schedule_csv_fd = open_hash(schedule_hash);
     }
@@ -2255,8 +2257,9 @@ void link_menu_action(void *ctx, size_t item) {
     int fd = open("/text/links.csv");
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
-    if (strlen(url) < 5) {
-        screen_draw_raw("/img/flag.raw", 0, 0, 82, 21);
+    if (5 == item) {
+        screen_draw_raw("/img/flag.raw", 4, 0, 13, 9);
+        screen_draw_raw("/img/monochrome.raw", 0, 9, 73, 11);
         screen_swap_fb();
         delay(5000);
     } else {
@@ -2279,19 +2282,18 @@ void game_menu_return(void *ctx) {
 }
 void game_menu_action(void *ctx, size_t item) {
     ctx = ctx;
+    menu_stop();
+    if (item != 0) {
+        goback_return_to_me(game_menu_return, (void*)item);
+    }
     switch(item) {
         case 0:
-            menu_stop();
             goback_return();
             break;
         case 1:
-            menu_stop();
-            goback_return_to_me(game_menu_return, (void*)item);
             snake_start();
             break;
         case 2:
-            menu_stop();
-            goback_return_to_me(game_menu_return, (void*)item);
             tetris_start();
             break;
     }
@@ -2309,35 +2311,31 @@ void main_menu_return(void *ctx) {
 }
 void main_menu_action(void *ctx, size_t item) {
     ctx = ctx;
+    menu_stop();
+    goback_return_to_me(main_menu_return, (void*)item);
     switch(item) {
         case 0:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             dialer_start();
             break;
         case 1:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day1.csv", 0);
             break;
         case 2:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day2.csv", 0);
             break;
         case 3:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
-            link_menu(0);
+            schedule_menu("/text/schedule-hhv-day1.csv", 0);
             break;
         case 4:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
-            game_menu(0);
+            schedule_menu("/text/schedule-hhv-day2.csv", 0);
             break;
         case 5:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
+            link_menu(0);
+            break;
+        case 6:
+            game_menu(0);
+            break;
+        case 7:
             img_start();
             break;
     }
