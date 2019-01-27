@@ -982,6 +982,7 @@ void dash_draw(bool left) {
 void dash_flag_reset() {
     dash_mode_counter = 0;
     dash_mode_flag = false;
+    dash_signal_prev = 2;
 }
 void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
@@ -2264,7 +2265,7 @@ void link_menu_action(void *ctx, size_t item) {
     int fd = open("/text/links.csv");
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
-    if (5 == item) {
+    if (4 == item) {
         screen_draw_raw("/img/flag.raw", 4, 0, 13, 9);
         screen_draw_raw("/img/monochrome.raw", 0, 9, 73, 11);
         screen_swap_fb();
