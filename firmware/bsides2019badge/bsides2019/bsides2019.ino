@@ -471,6 +471,7 @@ static uint8_t master_key1[16] = {
 #define STR_ID_DIAL_CODE_3524_FLAG    STD_ID_LINE_NO(12)
 #define STR_ID_DIAL_CODE_1800_FLAG    STD_ID_LINE_NO(13)
 #define STR_ID_FLAG                   STD_ID_LINE_NO(14)
+#define STR_ID_DIAL_CODE_01_VCC       STD_ID_LINE_NO(15)
 
 char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
     if ((!buffer) || (buffer_size <= 1)) {
@@ -1820,13 +1821,14 @@ void dialer_return(void *ctx) {
     }
     dialer_start();
 }
-#define DIAL_CODE_COUNT         4
+#define DIAL_CODE_COUNT         5
 #define DIAL_CODE_CALC_SIZE(n)  (n*(sizeof(uint8_t)+sizeof(uint8_t)))
 const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
     STR_ID_DIAL_CODE_0000_VER, 0x00,
     STR_ID_DIAL_CODE_06_IMEI, 0x00,
     STR_ID_DIAL_CODE_3524_FLAG, STR_ID_FLAG,
     STR_ID_DIAL_CODE_1800_FLAG, STR_ID_FLAG,
+    STR_ID_DIAL_CODE_01_VCC, 0x00,
 };
 void dialer_action(const char *number) {
     char dialer_code[20];
@@ -1841,6 +1843,9 @@ void dialer_action(const char *number) {
                 dialer_fd = open("/text/version.txt");
                 viewer_csv_row(dialer_fd, 0);
                 return;
+            }
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_01_VCC) {
+                dec_u32(dialer_msg, (uint32_t)readVcc(), false);
             }
             if (dialer_codes[i] == STR_ID_DIAL_CODE_06_IMEI) {
                 get_device_imei(dialer_msg, sizeof(dialer_msg));
