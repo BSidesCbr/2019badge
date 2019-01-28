@@ -25,10 +25,15 @@
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
 //#define GPIO_MODIFIED_DEC_PROTOTYPE
 #define GPIO_PRODUCTION
-#define BATTERY_LEVEL_1_LOW     2500
-#define BATTERY_LEVEL_2         2700
-#define BATTERY_LEVEL_3         2800
-#define BATTERY_LEVEL_4_HIGH    2900
+// (no bars)
+#define BATTERY_LEVEL_1_LOW     2450
+// -
+#define BATTERY_LEVEL_2         2500
+// --
+#define BATTERY_LEVEL_3         2600
+// --=
+#define BATTERY_LEVEL_4_HIGH    2700
+// --==
 
 //-----------------------------------------------------------------------------
 // Types
