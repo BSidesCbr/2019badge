@@ -461,22 +461,25 @@ static uint8_t master_key1[16] = {
 //-----------------------------------------------------------------------------
 // Strings stored in VFS
 //-----------------------------------------------------------------------------
-#define STD_ID_LINE_NO(line_no)       ((line_no)-1)
-#define STR_ID_UPLOAD_SCORE           STD_ID_LINE_NO(1)
-#define STR_ID_UPLOAD_URL             STD_ID_LINE_NO(2)
-#define STR_ID_NOPIA_TITLE            STD_ID_LINE_NO(3)
-#define STR_ID_BOOT_UNLOCKED_MSG_0    STD_ID_LINE_NO(4)
-#define STR_ID_BOOT_UNLOCKED_MSG_1    STD_ID_LINE_NO(5)
-#define STR_ID_BOOT_UNLOCKED_MSG_2    STD_ID_LINE_NO(6)
-#define STR_ID_SCHEDULE_TITLE         STD_ID_LINE_NO(7)
-#define STR_ID_LINKS_TITLE            STD_ID_LINE_NO(8)
-#define STR_ID_GAMES_TITLE            STD_ID_LINE_NO(9)
-#define STR_ID_DIAL_CODE_0000_VER     STD_ID_LINE_NO(10)
-#define STR_ID_DIAL_CODE_06_IMEI      STD_ID_LINE_NO(11)
-#define STR_ID_DIAL_CODE_3524_FLAG    STD_ID_LINE_NO(12)
-#define STR_ID_DIAL_CODE_1800_FLAG    STD_ID_LINE_NO(13)
-#define STR_ID_FLAG                   STD_ID_LINE_NO(14)
-#define STR_ID_DIAL_CODE_01_VCC       STD_ID_LINE_NO(15)
+#define STR_ID_LINE_NO(line_no)       ((line_no)-1)
+#define STR_ID_UPLOAD_SCORE           STR_ID_LINE_NO(1)
+#define STR_ID_UPLOAD_URL             STR_ID_LINE_NO(2)
+#define STR_ID_NOPIA_TITLE            STR_ID_LINE_NO(3)
+#define STR_ID_BOOT_UNLOCKED_MSG_0    STR_ID_LINE_NO(4)
+#define STR_ID_BOOT_UNLOCKED_MSG_1    STR_ID_LINE_NO(5)
+#define STR_ID_BOOT_UNLOCKED_MSG_2    STR_ID_LINE_NO(6)
+#define STR_ID_SCHEDULE_TITLE         STR_ID_LINE_NO(7)
+#define STR_ID_LINKS_TITLE            STR_ID_LINE_NO(8)
+#define STR_ID_GAMES_TITLE            STR_ID_LINE_NO(9)
+#define STR_ID_DIAL_CODE_0000_VER     STR_ID_LINE_NO(10)
+#define STR_ID_DIAL_CODE_06_IMEI      STR_ID_LINE_NO(11)
+#define STR_ID_DIAL_CODE_3524_FLAG    STR_ID_LINE_NO(12)
+#define STR_ID_DIAL_CODE_1800_FLAG    STR_ID_LINE_NO(13)
+#define STR_ID_FLAG                   STR_ID_LINE_NO(14)
+#define STR_ID_DIAL_CODE_01_VCC       STR_ID_LINE_NO(15)
+#define STR_ID_DIAL_CODE_21_DIVERT    STR_ID_LINE_NO(16)
+#define STR_ID_DIAL_CODE_02_INVERT    STR_ID_LINE_NO(17)
+#define STR_ID_OK                     STR_ID_LINE_NO(18)
 
 char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
     if ((!buffer) || (buffer_size <= 1)) {
@@ -764,11 +767,13 @@ void button_init() {
 #define NOKIA_SCREEN_PIXELS_PER_ROW   (NOKIA_SCREEN_PIXELS/NOKIA_SCREEN_TEXT_ROWS)
 #define NOKIA_SCREEN_BYTES_PER_ROW    (NOKIA_SCREEN_BYTES/NOKIA_SCREEN_TEXT_ROWS)
 static unsigned char nokia_screen_buffer[NOKIA_SCREEN_BYTES];
+static bool nokia_color_normal = true;
+#define nokia_colour_invert()   nokia_color_normal=!nokia_color_normal
 void nokia_draw_clear() {
-    memset(nokia_screen_buffer, 0, sizeof(nokia_screen_buffer));
+    memset(nokia_screen_buffer, nokia_color_normal ? 0 : 0xff, sizeof(nokia_screen_buffer));
 }
 void nokia_draw_black() {
-    memset(nokia_screen_buffer, 0xff, sizeof(nokia_screen_buffer));
+    memset(nokia_screen_buffer, nokia_color_normal ? 0xff : 0, sizeof(nokia_screen_buffer));
 }
 void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
     int16_t pixel = (y * NOKIA_SCREEN_WIDTH) + x;
@@ -780,7 +785,7 @@ void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
     if ((index < 0) || (index >= NOKIA_SCREEN_BYTES)) {
       return;
     }
-    if (black) {
+    if (nokia_color_normal == black) {
         nokia_screen_buffer[index] |= (1 << bit);
     } else {
         nokia_screen_buffer[index] &=~ (1 << bit);
@@ -1827,7 +1832,7 @@ void dialer_return(void *ctx) {
     }
     dialer_start();
 }
-#define DIAL_CODE_COUNT         5
+#define DIAL_CODE_COUNT         7
 #define DIAL_CODE_CALC_SIZE(n)  (n*(sizeof(uint8_t)+sizeof(uint8_t)))
 const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
     STR_ID_DIAL_CODE_0000_VER, 0x00,
@@ -1835,6 +1840,8 @@ const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
     STR_ID_DIAL_CODE_3524_FLAG, STR_ID_FLAG,
     STR_ID_DIAL_CODE_1800_FLAG, STR_ID_FLAG,
     STR_ID_DIAL_CODE_01_VCC, 0x00,
+    STR_ID_DIAL_CODE_21_DIVERT, STR_ID_DIAL_CODE_1800_FLAG,
+    STR_ID_DIAL_CODE_02_INVERT, STR_ID_OK,
 };
 void dialer_action(const char *number) {
     char dialer_code[20];
@@ -1855,6 +1862,9 @@ void dialer_action(const char *number) {
             }
             if (dialer_codes[i] == STR_ID_DIAL_CODE_06_IMEI) {
                 get_device_imei(dialer_msg, sizeof(dialer_msg));
+            }
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_02_INVERT) {
+                nokia_colour_invert();
             }
             viewer_c_str(dialer_msg);
             return;
