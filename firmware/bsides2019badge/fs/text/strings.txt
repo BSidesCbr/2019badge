@@ -1,5 +1,5 @@
 UPLOAD SCORE
-http://nopia.ap-southeast-2.elasticbeanstalk.com/index.html?t=
+https://nopia.bsidescbr.com.au/?t=
 NOPIA 1337
 Your device is
 unlocked and
@@ -12,3 +12,7 @@ Games
 *#3524#
 18003524
 cybears{d1al_3524}
+*#01#
+*#21#
+*#02#
+OK

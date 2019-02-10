@@ -25,10 +25,15 @@
 //#define GPIO_ARDUINO_UNO_DEV_BOARD
 //#define GPIO_MODIFIED_DEC_PROTOTYPE
 #define GPIO_PRODUCTION
-#define BATTERY_LEVEL_1_LOW     2500
-#define BATTERY_LEVEL_2         2700
-#define BATTERY_LEVEL_3         2800
-#define BATTERY_LEVEL_4_HIGH    2900
+// (no bars)
+#define BATTERY_LEVEL_1_LOW     2450
+// -
+#define BATTERY_LEVEL_2         2500
+// --
+#define BATTERY_LEVEL_3         2600
+// --=
+#define BATTERY_LEVEL_4_HIGH    2700
+// --==
 
 //-----------------------------------------------------------------------------
 // Types
@@ -456,21 +461,25 @@ static uint8_t master_key1[16] = {
 //-----------------------------------------------------------------------------
 // Strings stored in VFS
 //-----------------------------------------------------------------------------
-#define STD_ID_LINE_NO(line_no)       ((line_no)-1)
-#define STR_ID_UPLOAD_SCORE           STD_ID_LINE_NO(1)
-#define STR_ID_UPLOAD_URL             STD_ID_LINE_NO(2)
-#define STR_ID_NOPIA_TITLE            STD_ID_LINE_NO(3)
-#define STR_ID_BOOT_UNLOCKED_MSG_0    STD_ID_LINE_NO(4)
-#define STR_ID_BOOT_UNLOCKED_MSG_1    STD_ID_LINE_NO(5)
-#define STR_ID_BOOT_UNLOCKED_MSG_2    STD_ID_LINE_NO(6)
-#define STR_ID_SCHEDULE_TITLE         STD_ID_LINE_NO(7)
-#define STR_ID_LINKS_TITLE            STD_ID_LINE_NO(8)
-#define STR_ID_GAMES_TITLE            STD_ID_LINE_NO(9)
-#define STR_ID_DIAL_CODE_0000_VER     STD_ID_LINE_NO(10)
-#define STR_ID_DIAL_CODE_06_IMEI      STD_ID_LINE_NO(11)
-#define STR_ID_DIAL_CODE_3524_FLAG    STD_ID_LINE_NO(12)
-#define STR_ID_DIAL_CODE_1800_FLAG    STD_ID_LINE_NO(13)
-#define STR_ID_FLAG                   STD_ID_LINE_NO(14)
+#define STR_ID_LINE_NO(line_no)       ((line_no)-1)
+#define STR_ID_UPLOAD_SCORE           STR_ID_LINE_NO(1)
+#define STR_ID_UPLOAD_URL             STR_ID_LINE_NO(2)
+#define STR_ID_NOPIA_TITLE            STR_ID_LINE_NO(3)
+#define STR_ID_BOOT_UNLOCKED_MSG_0    STR_ID_LINE_NO(4)
+#define STR_ID_BOOT_UNLOCKED_MSG_1    STR_ID_LINE_NO(5)
+#define STR_ID_BOOT_UNLOCKED_MSG_2    STR_ID_LINE_NO(6)
+#define STR_ID_SCHEDULE_TITLE         STR_ID_LINE_NO(7)
+#define STR_ID_LINKS_TITLE            STR_ID_LINE_NO(8)
+#define STR_ID_GAMES_TITLE            STR_ID_LINE_NO(9)
+#define STR_ID_DIAL_CODE_0000_VER     STR_ID_LINE_NO(10)
+#define STR_ID_DIAL_CODE_06_IMEI      STR_ID_LINE_NO(11)
+#define STR_ID_DIAL_CODE_3524_FLAG    STR_ID_LINE_NO(12)
+#define STR_ID_DIAL_CODE_1800_FLAG    STR_ID_LINE_NO(13)
+#define STR_ID_FLAG                   STR_ID_LINE_NO(14)
+#define STR_ID_DIAL_CODE_01_VCC       STR_ID_LINE_NO(15)
+#define STR_ID_DIAL_CODE_21_DIVERT    STR_ID_LINE_NO(16)
+#define STR_ID_DIAL_CODE_02_INVERT    STR_ID_LINE_NO(17)
+#define STR_ID_OK                     STR_ID_LINE_NO(18)
 
 char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
     if ((!buffer) || (buffer_size <= 1)) {
@@ -487,14 +496,13 @@ char * getstr(uint8_t str_id, char *buffer, size_t buffer_size) {
 //-----------------------------------------------------------------------------
 // EEPROM persistent config
 //-----------------------------------------------------------------------------
-#define DEVICE_CONFIG_MAGIC       "NOPIA 3117" // STR_ID_NOPIA_TITLE
-#define DEVICE_CONFIG_MAGIC_SIZE  (sizeof(DEVICE_CONFIG_MAGIC)-1)
 #define DEVICE_CONFIG_SIZE        (sizeof(struct device_config_t))
-
+#define DEVICE_CONFIG_MAGIC       ((uint32_t)0xa8b3df93);
 struct device_config_t {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE];
-    uint16_t counter;
+    uint32_t rng1;
     uint32_t device_id;
+    uint32_t rng2;
+    uint32_t chksum;
 };
 bool write_eeprom(int ee, const void *buffer, size_t buffer_size) {
     for (size_t i = 0; i < buffer_size; i++) {
@@ -510,16 +518,19 @@ bool read_eeprom(int ee, void *buffer, size_t buffer_size) {
     return true;
 }
 bool check_config_ok(struct device_config_t *config) {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
-    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
-    return 0 == memcmp(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
+    uint32_t chksum;
+    struct device_config_t config_calc;
+    memcpy(&config_calc, config, DEVICE_CONFIG_SIZE);
+    config_calc.chksum = DEVICE_CONFIG_MAGIC;
+    crc32(&config_calc, DEVICE_CONFIG_SIZE, &chksum);
+    return config->chksum == chksum;
 }
 void init_config(struct device_config_t *config) {
-    char magic[DEVICE_CONFIG_MAGIC_SIZE+1];
-    getstr(STR_ID_NOPIA_TITLE, magic, sizeof(magic));
-    memcpy(config->magic, magic, DEVICE_CONFIG_MAGIC_SIZE);
-    rngcpy(&(config->device_id), 4);
-    config->counter = 0;
+    uint32_t chksum;
+    rngcpy(&(config->rng1), 12);
+    config->chksum = DEVICE_CONFIG_MAGIC;
+    crc32(config, DEVICE_CONFIG_SIZE, &chksum);
+    config->chksum = chksum;
 }
 bool read_config(struct device_config_t *config) {
     if (NULL == config) {
@@ -756,11 +767,13 @@ void button_init() {
 #define NOKIA_SCREEN_PIXELS_PER_ROW   (NOKIA_SCREEN_PIXELS/NOKIA_SCREEN_TEXT_ROWS)
 #define NOKIA_SCREEN_BYTES_PER_ROW    (NOKIA_SCREEN_BYTES/NOKIA_SCREEN_TEXT_ROWS)
 static unsigned char nokia_screen_buffer[NOKIA_SCREEN_BYTES];
+static bool nokia_color_normal = true;
+#define nokia_colour_invert()   nokia_color_normal=!nokia_color_normal
 void nokia_draw_clear() {
-    memset(nokia_screen_buffer, 0, sizeof(nokia_screen_buffer));
+    memset(nokia_screen_buffer, nokia_color_normal ? 0 : 0xff, sizeof(nokia_screen_buffer));
 }
 void nokia_draw_black() {
-    memset(nokia_screen_buffer, 0xff, sizeof(nokia_screen_buffer));
+    memset(nokia_screen_buffer, nokia_color_normal ? 0xff : 0, sizeof(nokia_screen_buffer));
 }
 void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
     int16_t pixel = (y * NOKIA_SCREEN_WIDTH) + x;
@@ -772,7 +785,7 @@ void nokia_draw_pixel(int16_t x, int16_t y, bool black) {
     if ((index < 0) || (index >= NOKIA_SCREEN_BYTES)) {
       return;
     }
-    if (black) {
+    if (nokia_color_normal == black) {
         nokia_screen_buffer[index] |= (1 << bit);
     } else {
         nokia_screen_buffer[index] &=~ (1 << bit);
@@ -937,7 +950,8 @@ uint8_t power_get_battery_level()
 //-----------------------------------------------------------------------------
 static uint8_t dash_power;
 static uint8_t dash_signal;
-#define DASH_FLAG_DELAY_SEC   30
+static uint8_t dash_signal_prev; 
+#define DASH_FLAG_DELAY_SEC   60
 static uint8_t dash_mode_counter = 0;
 static bool dash_mode_flag = false;
 static uint8_t dash_mode_nibble = 0;
@@ -978,13 +992,20 @@ void dash_draw(bool left) {
 void dash_flag_reset() {
     dash_mode_counter = 0;
     dash_mode_flag = false;
+    dash_signal_prev = 2;
 }
 void VINTC_API dash_update(void *ctx) {
     ctx = ctx;
     dash_power = power_get_battery_level();
     dash_power = (1 << dash_power) - 1;
-    dash_signal = rng_range_s16(0, 4);
-    dash_signal = (1 << dash_signal) - 1;
+    dash_signal_prev += (uint8_t)rng_range_s16(0, 2);
+    if (dash_signal_prev > 5) {
+        dash_signal_prev = 5;
+    }
+    if (dash_signal_prev > 0) {
+        dash_signal_prev--;
+    }
+    dash_signal = (1 << dash_signal_prev) - 1;
 
     if (dash_mode_flag) {
         char dash_flag[FLAG_SIZE];
@@ -1811,13 +1832,16 @@ void dialer_return(void *ctx) {
     }
     dialer_start();
 }
-#define DIAL_CODE_COUNT         4
+#define DIAL_CODE_COUNT         7
 #define DIAL_CODE_CALC_SIZE(n)  (n*(sizeof(uint8_t)+sizeof(uint8_t)))
 const static uint8_t dialer_codes[DIAL_CODE_CALC_SIZE(DIAL_CODE_COUNT)] {
     STR_ID_DIAL_CODE_0000_VER, 0x00,
     STR_ID_DIAL_CODE_06_IMEI, 0x00,
     STR_ID_DIAL_CODE_3524_FLAG, STR_ID_FLAG,
     STR_ID_DIAL_CODE_1800_FLAG, STR_ID_FLAG,
+    STR_ID_DIAL_CODE_01_VCC, 0x00,
+    STR_ID_DIAL_CODE_21_DIVERT, STR_ID_DIAL_CODE_1800_FLAG,
+    STR_ID_DIAL_CODE_02_INVERT, STR_ID_OK,
 };
 void dialer_action(const char *number) {
     char dialer_code[20];
@@ -1833,8 +1857,14 @@ void dialer_action(const char *number) {
                 viewer_csv_row(dialer_fd, 0);
                 return;
             }
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_01_VCC) {
+                dec_u32(dialer_msg, (uint32_t)readVcc(), false);
+            }
             if (dialer_codes[i] == STR_ID_DIAL_CODE_06_IMEI) {
                 get_device_imei(dialer_msg, sizeof(dialer_msg));
+            }
+            if (dialer_codes[i] == STR_ID_DIAL_CODE_02_INVERT) {
+                nokia_colour_invert();
             }
             viewer_c_str(dialer_msg);
             return;
@@ -1917,20 +1947,30 @@ void img_display(uint8_t img_id) {
     uint8_t y = 0;
     uint8_t width = SCREEN_WIDTH;
     uint8_t height = SCREEN_HEIGHT;
+    screen_draw_clear();
     switch(img_id) {
         case IMG_ID_BSIDES:
+            screen_draw_raw("/img/flagsmall.raw", 46, 0, 9, 11);
             hash = VFSC_HASH("/img/bsidescbr.raw");
+            height = 32;
+            y = 11;
             break;
         case IMG_ID_NOPIA:
             hash = VFSC_HASH("/img/nopia.raw");
+            height = 43;
+            y++;
+            screen_fill_rect(x, y + height, width, 5, SCREEN_COLOR_BLACK);
             break;
         case IMG_ID_CYBERNATS:
             hash = VFSC_HASH("/img/cybernats.raw");
+            width = 77;
+            height = 45;
+            x = 2;
+            y++;
             break;
         default:
             return;
     }
-    screen_draw_clear();
     screen_draw_raw_hash(hash, x, y, width, height);
     screen_swap_fb();
 }
@@ -2200,8 +2240,6 @@ void schedule_menu_action(void *ctx, size_t item) {
     ctx = ctx;
     if (0 == item) {
         menu_stop();
-        close(schedule_csv_fd);
-        schedule_csv_fd = -1;
         goback_return();
         return;
     }
@@ -2211,7 +2249,10 @@ void schedule_menu_action(void *ctx, size_t item) {
     viewer_csv_row(schedule_csv_fd, item);
 }
 void schedule_menu_hash(vfsc_hash_t hash, size_t item) {
-    if ((schedule_csv_fd < 0) && (0 != hash)) {
+    if (0 != hash) {
+        if (!(schedule_csv_fd < 0)) {
+            close(schedule_csv_fd);
+        }
         schedule_hash = hash;
         schedule_csv_fd = open_hash(schedule_hash);
     }
@@ -2239,8 +2280,9 @@ void link_menu_action(void *ctx, size_t item) {
     int fd = open("/text/links.csv");
     csv_read(fd, item, 1, url, sizeof(url));
     close(fd);
-    if (strlen(url) < 5) {
-        screen_draw_raw("/img/flag.raw", 0, 0, 82, 21);
+    if (4 == item) {
+        screen_draw_raw("/img/flag.raw", 4, 0, 13, 9);
+        screen_draw_raw("/img/monochrome.raw", 0, 9, 73, 11);
         screen_swap_fb();
         delay(5000);
     } else {
@@ -2263,19 +2305,18 @@ void game_menu_return(void *ctx) {
 }
 void game_menu_action(void *ctx, size_t item) {
     ctx = ctx;
+    menu_stop();
+    if (item != 0) {
+        goback_return_to_me(game_menu_return, (void*)item);
+    }
     switch(item) {
         case 0:
-            menu_stop();
             goback_return();
             break;
         case 1:
-            menu_stop();
-            goback_return_to_me(game_menu_return, (void*)item);
             snake_start();
             break;
         case 2:
-            menu_stop();
-            goback_return_to_me(game_menu_return, (void*)item);
             tetris_start();
             break;
     }
@@ -2293,35 +2334,31 @@ void main_menu_return(void *ctx) {
 }
 void main_menu_action(void *ctx, size_t item) {
     ctx = ctx;
+    menu_stop();
+    goback_return_to_me(main_menu_return, (void*)item);
     switch(item) {
         case 0:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             dialer_start();
             break;
         case 1:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day1.csv", 0);
             break;
         case 2:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
             schedule_menu("/text/schedule-day2.csv", 0);
             break;
         case 3:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
-            link_menu(0);
+            schedule_menu("/text/schedule-hhv-day1.csv", 0);
             break;
         case 4:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
-            game_menu(0);
+            schedule_menu("/text/schedule-hhv-day2.csv", 0);
             break;
         case 5:
-            menu_stop();
-            goback_return_to_me(main_menu_return, (void*)item);
+            link_menu(0);
+            break;
+        case 6:
+            game_menu(0);
+            break;
+        case 7:
             img_start();
             break;
     }

@@ -1,14 +1,14 @@
-9:00am,9:10am,Day Two Welcome Back,Silvio & Kylie
-9:10am,10:00am,Attacking High Security Lock Systems,Topy
-10:00am,10:20am,Countering Cyber Adversary Tradecraft,Matt Wilcox
-10:20am,11:10am,Global Honeypot Trends,Elliot Brink
-11:10am,12:00pm,Naval-gazing with Docker,Frenchie
-12:00pm,1:00pm,LUNCH BREAK
-1:00pm,1:50pm,EFF 'Secure' IM Scorecard Review,Dan & Matt
-1:50pm,2:10pm,Die Hard 7,Passwords Please
-2:10pm,3:00pm,All your Bases are Belong to Us, the first 2^32 Years of Security,Pearce & Stewart
-3:00pm,3:20pm,AFTERNOON BREAK,
-3:20pm,4:10pm,Why you shouldn't use SSL
-4:10pm,4:30pm,Elevator Basics & Potential Future Vulnerabilities,Wizzy (aka Josh)
-4:30pm,5:20pm,Active Incident Response,Candlish & Teutenberg
-5:20pm,5:40pm,Awards & Closing Ceremony,Silvio & Kylie
+9:00am,9:10am,Welcome to Day 2
+9:10am,10:00am,Keynote - What's in a Jailbreak? Hacking the iPhone: 2014-2019,Mark Dowd
+10:00am,10:15am,Break
+10:15am,10:45am,SSH so hot right now. Profiling it with HASSH,Ben Reardon & Adel Karimi
+10:45am,11:45am,IoT and the Future of Pentesting,Jeremy Goldstein
+11:45am,12:15pm,Apathy and Arsenic: a Victorian Era lesson on fighting the surveillance state,Attacus
+12:15pm,1:15pm,Lunch
+1:15pm,2:15pm,Wi-Bear: Intelligent Autonomous Wi-Fi Honeypot Detection,Vivek Ramachandran
+2:15pm,3:15pm,windows kernel fuzzing,gimlu
+3:15pm,3:45pm,Sample 78: Deconstruction Of A Linux Adversarial Toolkit,Christian Guiffre
+3:45pm,4:00pm,Break
+4:00pm,5:00pm,Source code security audit speed run,Eldar Marussen
+5:00pm,6:30pm,Closing Ceremony
+6:30pm,12:00am,Saturday Night Party
