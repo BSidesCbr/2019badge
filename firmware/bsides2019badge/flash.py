@@ -49,7 +49,9 @@ def avrdude_flash(avrdude, conf, firmware):
     ret = 1
     while ret != 0:
         args = list()
-        args.extend([avrdude, '-C', conf, '-v', '-p', 'atmega328p', '-c', 'avrisp2', '-P', 'usb', '-U', 'flash:w:{}:i'.format(firmware)])
+        # usbasp
+        # avrisp2
+        args.extend([avrdude, '-C', conf, '-s', '-v', '-p', 'atmega328p', '-c', 'avrisp2', '-P', 'usb', '-U', 'flash:w:{}:i'.format(firmware)])
         args.extend(['-U', 'lfuse:w:0xD6:m', '-U', 'hfuse:w:0xD9:m', '-U', 'efuse:w:0xFF:m'])
         ret = subprocess.call(args)
         time.sleep(1)
@@ -63,4 +65,6 @@ firmware = os.path.realpath(os.path.join(os.path.dirname(__file__), 'bsides2019'
 input("Press Enter to flash...")
 while True:
     avrdude_flash(avrdude, conf, firmware)
-    input("Press Enter to flash next...")
+    #input("Press Enter to flash next...")
+    time.sleep(5)
+
