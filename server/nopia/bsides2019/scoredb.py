@@ -181,13 +181,22 @@ class ScoreDb(object):
         tscore = self.score_table_name(game)
         tname = self.name_table_name()
         sql = """
-            SELECT
-                {}.IMEI as IMEI,
-                {}.NAME as NAME,
-                {}.SCORE as SCORE,
-                {}.TIMESTAMP as TIMESTAMP
-            FROM {}
-            LEFT JOIN {} ON {}.IMEI = {}.IMEI
+            SELECT * FROM 
+            (
+                SELECT
+                    {}.IMEI as IMEI,
+                    {}.NAME as NAME,
+                    {}.SCORE as SCORE,
+                    {}.TIMESTAMP as TIMESTAMP
+                FROM {}
+                LEFT JOIN {} ON {}.IMEI = {}.IMEI
+                ORDER BY SCORE DESC, TIMESTAMP ASC
+            ) AS A
+            RIGHT JOIN
+            (
+                SELECT IMEI, MAX(SCORE) AS MAX_SCORE FROM {} GROUP BY IMEI
+            ) AS B
+            ON A.IMEI = B.IMEI AND A.SCORE = B.MAX_SCORE
             ORDER BY SCORE DESC, TIMESTAMP ASC
         """.format(
             tscore, # imei
@@ -198,6 +207,7 @@ class ScoreDb(object):
             tname,
             tscore,
             tname,
+            tscore, # for max score
         )
         return self.sql_read(sql, count=count)
 
