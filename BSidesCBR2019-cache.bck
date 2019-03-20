@@ -1,8 +1,0 @@
-EESchema-DOCLIB  Version 2.0
-#
-$CMP Battery_Cell_PWR
-D single battery cell
-K battery cell
-$ENDCMP
-#
-#End Doc Library
